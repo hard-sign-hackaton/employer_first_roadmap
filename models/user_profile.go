@@ -1,14 +1,34 @@
 package models
 
-import "gorm.io/gorm"
+import (
+	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
 
 type UserProfile struct {
-	gorm.Model
-	Grade  uint   `json:"grade"`
-	Region string `json:"region"`
+	ID        uuid.UUID `json:"id" gorm:"type:uuid;primaryKey"`
+	Grade     uint8     `json:"grade"`
+	RegionID  uint      `json:"region_id"`
+	CreatedAt time.Time `json:"created_at"`
 
-	Interests []Interest `json:"interests" gorm:"many2many:user_profile_interests"`
-	Exams     []UserExam `json:"exams"`
+	Region    Region         `json:"region"`
+	Interests []UserInterest `json:"interests"`
+	Subjects  []UserSubject  `json:"subjects"`
+}
+
+func (profile *UserProfile) BeforeCreate(_ *gorm.DB) error {
+	if profile.ID == uuid.Nil {
+		profile.ID = uuid.New()
+	}
+
+	return nil
+}
+
+type Region struct {
+	gorm.Model
+	Name string `json:"name"`
 }
 
 type Interest struct {
@@ -16,12 +36,24 @@ type Interest struct {
 	Name string `json:"name"`
 }
 
-type UserExam struct {
-	gorm.Model
-	UserProfileID uint  `json:"-"`
-	ExamID        uint  `json:"exam_id"`
-	Score         *uint `json:"score"`
-	Planned       bool  `json:"planned"`
+type UserInterest struct {
+	UserProfileID uuid.UUID `json:"user_id" gorm:"type:uuid;primaryKey"`
+	InterestID    uint      `json:"interest_id" gorm:"primaryKey"`
+	Weight        float64   `json:"weight"`
 
-	Exam ExamType `json:"exam"`
+	Interest Interest `json:"interest"`
+}
+
+type Subject struct {
+	gorm.Model
+	Name string `json:"name"`
+}
+
+type UserSubject struct {
+	UserProfileID uuid.UUID `json:"user_id" gorm:"type:uuid;primaryKey"`
+	SubjectID     uint      `json:"subject_id" gorm:"primaryKey"`
+	Status        string    `json:"status"`
+	Score         *uint     `json:"score"`
+
+	Subject Subject `json:"subject"`
 }

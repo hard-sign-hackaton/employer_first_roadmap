@@ -18,7 +18,7 @@ func init() {
 
 func main() {
 	// Получение токена бота из переменных окружения
-	access_token:= os.Getenv("BOT_TOKEN")
+	access_token := os.Getenv("BOT_TOKEN")
 
 	// Создание нового экземпляра бота
 	bot, err := maxbot.NewApi(access_token)

@@ -3,12 +3,11 @@ package models
 import (
 	"time"
 
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 type UserProfile struct {
-	ID        uuid.UUID `json:"id" gorm:"type:uuid;primaryKey"`
+	ID        int64     `json:"id" gorm:"primaryKey;autoIncrement:false"`
 	Grade     uint8     `json:"grade"`
 	RegionID  uint      `json:"region_id"`
 	CreatedAt time.Time `json:"created_at"`
@@ -16,14 +15,6 @@ type UserProfile struct {
 	Region    Region         `json:"region"`
 	Interests []UserInterest `json:"interests"`
 	Subjects  []UserSubject  `json:"subjects"`
-}
-
-func (profile *UserProfile) BeforeCreate(_ *gorm.DB) error {
-	if profile.ID == uuid.Nil {
-		profile.ID = uuid.New()
-	}
-
-	return nil
 }
 
 type Region struct {
@@ -37,9 +28,9 @@ type Interest struct {
 }
 
 type UserInterest struct {
-	UserProfileID uuid.UUID `json:"user_id" gorm:"type:uuid;primaryKey"`
-	InterestID    uint      `json:"interest_id" gorm:"primaryKey"`
-	Weight        float64   `json:"weight"`
+	UserProfileID int64   `json:"user_id" gorm:"primaryKey"`
+	InterestID    uint    `json:"interest_id" gorm:"primaryKey"`
+	Weight        float64 `json:"weight"`
 
 	Interest Interest `json:"interest"`
 }
@@ -50,10 +41,10 @@ type Subject struct {
 }
 
 type UserSubject struct {
-	UserProfileID uuid.UUID `json:"user_id" gorm:"type:uuid;primaryKey"`
-	SubjectID     uint      `json:"subject_id" gorm:"primaryKey"`
-	Status        string    `json:"status"`
-	Score         *uint     `json:"score"`
+	UserProfileID int64  `json:"user_id" gorm:"primaryKey"`
+	SubjectID     uint   `json:"subject_id" gorm:"primaryKey"`
+	Status        string `json:"status"`
+	Score         *uint  `json:"score"`
 
 	Subject Subject `json:"subject"`
 }

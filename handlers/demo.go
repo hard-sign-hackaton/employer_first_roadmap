@@ -16,8 +16,8 @@ const (
 )
 
 var (
-	userState = make(map[int64]string)
-	userData  = make(map[int64]map[string]string)
+	userState = make(map[int64]string)            // Хранилище состояний форм
+	userData  = make(map[int64]map[string]string) // Хранилище данных форм
 	mu        sync.Mutex
 )
 
@@ -44,17 +44,19 @@ func DemoMessageListenerHandler(ctx maxbot.Context) error {
 
 	// Если форма запущена, идем по форме
 	text := ctx.Update().Message.Body.Text
+
 	switch state {
 	case StateWaitingName:
-		// Зполняем имя и переходим на ввод возраста
+		// Зaполняем имя и переходим на ввод возраста
 		userData[userId]["name"] = text
 		userState[userId] = StateWaitingAge
 
 		mu.Unlock()
 
 		ctx.Send("2. Введите возраст")
+
 	case StateWaitingAge:
-		// Зполняем возраст и удаляем данные из временного хранилища
+		// Зaполняем возраст и удаляем данные из временного хранилища
 		userData[userId]["age"] = text
 		userState[userId] = StateNone
 
@@ -72,6 +74,7 @@ func DemoMessageListenerHandler(ctx maxbot.Context) error {
 	return nil
 }
 
+// Меню создает кнопки для вызова коллбеков
 func DemoMenuHandler(ctx maxbot.Context) error {
 	kb := model.NewKeyboard()
 	kb.AddRow().AddCallBack("Демо-запрос", "/demo")

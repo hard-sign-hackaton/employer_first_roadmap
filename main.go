@@ -26,7 +26,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Определение обработчиков комманд
+	// Обработка событий
 	bot.Handle(maxbot.OnBotStarted, handlers.DemoMenuHandler)
 	bot.Handle(maxbot.OnMessageCreated, handlers.DemoMessageListenerHandler)
 

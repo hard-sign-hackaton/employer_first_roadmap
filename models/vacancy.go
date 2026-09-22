@@ -7,8 +7,10 @@ type Vacancy struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 
-	Requirements []Competence `json:"requirements"`
-	Company      Company      `json:"company"`
+	Requirements []Competence `gorm:"many2many:vacancy_requirements"`
+
+	Company   Company `gorm:"foreignKey:CompanyID"`
+	CompanyID uint
 }
 
 type Competence struct {

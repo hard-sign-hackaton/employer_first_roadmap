@@ -7,9 +7,11 @@ type EducationProgram struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 
-	Requirements  []ExamRequirement `json:"requirements"`
-	Opportunities []Competence      `json:"opportunities"`
-	University    University        `json:"university"`
+	Requirements  []ExamRequirement
+	Opportunities []Competence `gorm:"many2many:education_program_opportunities"`
+
+	UniversityID uint
+	University   University `gorm:"foreignKey:UniversityID"`
 }
 
 type ExamRequirement struct {
@@ -19,7 +21,9 @@ type ExamRequirement struct {
 	MinRealScore   uint `json:"min_real_score"`
 	MinBudgetScore uint `json:"min_budget_score"`
 
-	Exam ExamType `json:"exam"`
+	Exam ExamType `gorm:"many2many:exam_requirement_types"`
+
+	EducationProgramID uint `gorm:"foreignKey:EducationProgramID"`
 }
 
 type ExamType struct {

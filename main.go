@@ -1,6 +1,7 @@
 package main
 
 import (
+	"efr_bot/handlers"
 	"log"
 	"os"
 
@@ -17,10 +18,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Определение обработчика для команды /start
-	bot.Handle("/start", func(ctx maxbot.Context) error {
-		return ctx.Reply("Привет! Я хуесос. Чем я могу помочь?")
-	})
+	// Определение обработчиков комманд
+	bot.Handle("/demo", handlers.DemoHandler)
 
 	// Запуск бота и начало мониторинга событий
 	log.Println("Бот запускается...")

@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/max-messenger/maxbot"
+	"github.com/max-messenger/max-bot-api-client-go/v2/model"
 )
 
 func DemoHandler(ctx maxbot.Context) error {
@@ -19,4 +20,11 @@ func VerboseEchoHandler(ctx maxbot.Context) error {
 					ctx.Update().Message.Body.Text,
 	)
 	return ctx.Reply(reply)
+}
+
+func MenuHandler(ctx maxbot.Context) error {
+	kb := model.NewKeyboard()
+	kb.AddRow().AddMessage("/demo")
+
+	return ctx.Send("Menu below", maxbot.WithKeyboard(kb))
 }

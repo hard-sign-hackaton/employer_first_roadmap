@@ -27,6 +27,7 @@ func main() {
 	}
 
 	// Определение обработчиков комманд
+	bot.Handle("/menu", handlers.MenuHandler)
 	bot.Handle("/demo", handlers.DemoHandler)
 	bot.Handle(maxbot.OnMessageCreated, handlers.VerboseEchoHandler)
 

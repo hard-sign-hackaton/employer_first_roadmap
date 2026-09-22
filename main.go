@@ -30,7 +30,8 @@ func main() {
 	bot.Handle(maxbot.OnBotStarted, handlers.DemoMenuHandler)
 	bot.Handle("/menu", handlers.DemoMenuHandler)
 	bot.Handle("/demo", handlers.DemoHandler)
-	bot.Handle(maxbot.OnMessageCreated, handlers.DemoVerboseEchoHandler)
+	bot.Handle(maxbot.OnMessageCreated, handlers.DemoMessageListenerHandler)
+	bot.Handle("/form", handlers.DemoFormHandler)
 
 	// Запуск бота и начало мониторинга событий
 	log.Println("Бот запускается...")

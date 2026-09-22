@@ -5,12 +5,20 @@ import (
 	"log"
 	"os"
 
+	"github.com/joho/godotenv"
 	"github.com/max-messenger/maxbot"
 )
 
+func init() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Unable to read env")
+	}
+}
+
 func main() {
 	// Получение токена бота из переменных окружения
-	access_token:= os.Getenv("BOT_TOKEN")
+	access_token := os.Getenv("BOT_TOKEN")
 
 	// Создание нового экземпляра бота
 	bot, err := maxbot.NewApi(access_token)

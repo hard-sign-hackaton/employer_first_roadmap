@@ -28,10 +28,12 @@ func main() {
 
 	// Определение обработчиков комманд
 	bot.Handle(maxbot.OnBotStarted, handlers.DemoMenuHandler)
-	bot.Handle("/menu", handlers.DemoMenuHandler)
-	bot.Handle("/demo", handlers.DemoHandler)
 	bot.Handle(maxbot.OnMessageCreated, handlers.DemoMessageListenerHandler)
-	bot.Handle("/form", handlers.DemoFormHandler)
+
+	// Обработка коллбеков
+	bot.HandleCallback("/menu", handlers.DemoMenuHandler)
+	bot.HandleCallback("/demo", handlers.DemoRequestHandler)
+	bot.HandleCallback("/form", handlers.DemoFormHandler)
 
 	// Запуск бота и начало мониторинга событий
 	log.Println("Бот запускается...")

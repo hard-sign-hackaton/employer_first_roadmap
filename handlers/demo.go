@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	StateNone        = "" // Форма не запущена
+	StateNone        = ""             // Форма не запущена
 	StateWaitingName = "waiting_name" // Для формы ожидается имя (1 аргумент)
-	StateWaitingAge  = "waiting_age" // ДЛя офрмы ожидается возраст (2 аргумент)
+	StateWaitingAge  = "waiting_age"  // ДЛя офрмы ожидается возраст (2 аргумент)
 )
 
 var (
@@ -21,8 +21,9 @@ var (
 	mu        sync.Mutex
 )
 
-func DemoHandler(ctx maxbot.Context) error {
-	return ctx.Reply("Demo response")
+func DemoRequestHandler(ctx maxbot.Context) error {
+	ctx.Reply("Demo response")
+	return DemoMenuHandler(ctx)
 }
 
 // Перехватывает все сообщения
@@ -45,31 +46,38 @@ func DemoMessageListenerHandler(ctx maxbot.Context) error {
 	text := ctx.Update().Message.Body.Text
 	switch state {
 	case StateWaitingName:
+		// Зполняем имя и переходим на ввод возраста
 		userData[userId]["name"] = text
 		userState[userId] = StateWaitingAge
+
 		mu.Unlock()
 
 		ctx.Send("2. Введите возраст")
 	case StateWaitingAge:
+		// Зполняем возраст и удаляем данные из временного хранилища
 		userData[userId]["age"] = text
 		userState[userId] = StateNone
+
 		tempName := userData[userId]["name"]
 		tempAge := userData[userId]["age"]
+
 		delete(userState, userId)
 		delete(userData, userId)
+
 		mu.Unlock()
 
 		ctx.Send(fmt.Sprintf("Ваше имя: %s\nВаш возраст: %s", tempName, tempAge))
+		return DemoMenuHandler(ctx)
 	}
 	return nil
 }
 
 func DemoMenuHandler(ctx maxbot.Context) error {
 	kb := model.NewKeyboard()
-	kb.AddRow().AddMessage("/demo")
-	kb.AddRow().AddMessage("/form")
+	kb.AddRow().AddCallBack("Демо-запрос", "/demo")
+	kb.AddRow().AddCallBack("Заполнить демо-форму", "/form")
 
-	return ctx.Send("Menu below", maxbot.WithKeyboard(kb))
+	return ctx.Send("Выберите действие", maxbot.WithKeyboard(kb))
 }
 
 func DemoFormHandler(ctx maxbot.Context) error {

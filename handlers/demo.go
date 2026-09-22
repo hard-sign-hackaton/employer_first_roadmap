@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/max-messenger/maxbot"
 	"github.com/max-messenger/max-bot-api-client-go/v2/model"
+	"github.com/max-messenger/maxbot"
 )
 
 func DemoHandler(ctx maxbot.Context) error {
@@ -13,16 +13,16 @@ func DemoHandler(ctx maxbot.Context) error {
 }
 
 // Доступ к данным пользователя и тексту сообщения
-func VerboseEchoHandler(ctx maxbot.Context) error {
+func DemoVerboseEchoHandler(ctx maxbot.Context) error {
 	reply := fmt.Sprintf("UserID: %s\nMessageID: %s\nText: %s",
-					strconv.FormatInt(ctx.Update().UserID, 10),
-					ctx.Update().MessageID,
-					ctx.Update().Message.Body.Text,
+		strconv.FormatInt(ctx.Update().UserID, 10),
+		ctx.Update().MessageID,
+		ctx.Update().Message.Body.Text,
 	)
 	return ctx.Reply(reply)
 }
 
-func MenuHandler(ctx maxbot.Context) error {
+func DemoMenuHandler(ctx maxbot.Context) error {
 	kb := model.NewKeyboard()
 	kb.AddRow().AddMessage("/demo")
 

@@ -27,9 +27,10 @@ func main() {
 	}
 
 	// Определение обработчиков комманд
-	bot.Handle("/menu", handlers.MenuHandler)
+	bot.Handle(maxbot.OnBotStarted, handlers.DemoMenuHandler)
+	bot.Handle("/menu", handlers.DemoMenuHandler)
 	bot.Handle("/demo", handlers.DemoHandler)
-	bot.Handle(maxbot.OnMessageCreated, handlers.VerboseEchoHandler)
+	bot.Handle(maxbot.OnMessageCreated, handlers.DemoVerboseEchoHandler)
 
 	// Запуск бота и начало мониторинга событий
 	log.Println("Бот запускается...")

@@ -28,6 +28,7 @@ func main() {
 
 	// Определение обработчиков комманд
 	bot.Handle("/demo", handlers.DemoHandler)
+	bot.Handle(maxbot.OnMessageCreated, handlers.VerboseEchoHandler)
 
 	// Запуск бота и начало мониторинга событий
 	log.Println("Бот запускается...")

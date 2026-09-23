@@ -16,11 +16,23 @@ type EducationOptionResponse struct {
 	Explanation        []string `json:"explanation"`
 }
 
+// FindEducationOptionsRequest запускает подбор ОП и вузов после результатов ЕГЭ.
+// ExpandGeography=true означает повторный поиск без исходного ограничения по региону.
+type FindEducationOptionsRequest struct {
+	RoadmapID       int64 `json:"roadmap_id"`
+	ExpandGeography bool  `json:"expand_geography"`
+}
+
 // AdmissionPlanLimitsResponse сообщает актуальные для кампании лимиты плана подачи.
 type AdmissionPlanLimitsResponse struct {
 	AdmissionYear            int16 `json:"admission_year"`
 	MaxUniversities          int16 `json:"max_universities"`
 	MaxProgramsPerUniversity int16 `json:"max_programs_per_university"`
+}
+
+// GetAdmissionPlanRequest запрашивает сохранённый план подачи документов для roadmap.
+type GetAdmissionPlanRequest struct {
+	RoadmapID int64 `json:"roadmap_id"`
 }
 
 // SaveAdmissionPlanRequest сохраняет выбранные после ЕГЭ варианты подачи документов.

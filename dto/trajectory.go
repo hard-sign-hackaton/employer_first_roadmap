@@ -7,6 +7,12 @@ type CompanyCatalogItemResponse struct {
 	Description string `json:"description"`
 }
 
+// FindCompaniesRequest задаёт поиск работодателя в каталоге для минимального опроса.
+type FindCompaniesRequest struct {
+	Query string `json:"query,omitempty"`
+	Limit int    `json:"limit,omitempty"`
+}
+
 // RecommendCompaniesRequest запускает рекомендации работодателей после полного опроса.
 // Для ученика 11 класса сервис дополнительно учитывает уже выбранные ЕГЭ из профиля.
 type RecommendCompaniesRequest struct {
@@ -26,6 +32,12 @@ type SelectCompanyRequest struct {
 	CompanyID int64 `json:"company_id"`
 }
 
+// GetCareerDirectionsRequest запрашивает направления подтверждённого работодателя.
+// Для ученика 11 класса сервис учитывает выбранные ЕГЭ из его профиля.
+type GetCareerDirectionsRequest struct {
+	CompanyID int64 `json:"company_id"`
+}
+
 // CareerDirectionResponse — карьерное направление выбранного работодателя.
 type CareerDirectionResponse struct {
 	ID          int64    `json:"id"`
@@ -42,6 +54,12 @@ type RecommendedExamSetResponse struct {
 	ExamSubjectIDs []int64               `json:"exam_subject_ids"`
 	Subjects       []ExamSubjectResponse `json:"subjects"`
 	Description    string                `json:"description,omitempty"`
+}
+
+// GetRecommendedExamSetsRequest запрашивает наборы ЕГЭ для выбранного карьерного направления.
+type GetRecommendedExamSetsRequest struct {
+	CareerDirectionID int64 `json:"career_direction_id"`
+	AdmissionYear     int16 `json:"admission_year"`
 }
 
 // ConfirmGoalRequest создаёт цель после выбора компании, направления и набора ЕГЭ.

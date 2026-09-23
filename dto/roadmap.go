@@ -24,6 +24,22 @@ type RoadmapResponse struct {
 	NextAction *RoadmapStepResponse  `json:"next_action,omitempty"`
 }
 
+// CreateRoadmapRequest создаёт общий roadmap для уже подтверждённой цели.
+type CreateRoadmapRequest struct {
+	GoalID int64 `json:"goal_id"`
+}
+
+// GetRoadmapRequest запрашивает roadmap по его идентификатору.
+type GetRoadmapRequest struct {
+	RoadmapID int64 `json:"roadmap_id"`
+}
+
+// GetRoadmapStepRequest запрашивает конкретный шаг roadmap.
+type GetRoadmapStepRequest struct {
+	RoadmapID int64 `json:"roadmap_id"`
+	StepID    int64 `json:"step_id"`
+}
+
 // UpdateRoadmapStepRequest меняет статус шага. Для completed сервис фиксирует время завершения.
 type UpdateRoadmapStepRequest struct {
 	Status string `json:"status"`

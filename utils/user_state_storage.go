@@ -7,19 +7,19 @@ import (
 
 var (
 	UserStateStorage = make(map[int64]models.UserState)
-	UserStateStorageMutex sync.Mutex
+	mu sync.Mutex
 )
 
 func UpdateUserStateStorage(id int64, newState models.UserState) {
-	UserStateStorageMutex.Lock()
+	mu.Lock()
 	UserStateStorage[id] = newState
-	UserStateStorageMutex.Unlock()
+	mu.Unlock()
 }
 
 func GetUserState(id int64) models.UserState {
-	UserStateStorageMutex.Lock()
+	mu.Lock()
 	state := UserStateStorage[id]
-	UserStateStorageMutex.Unlock()
+	mu.Unlock()
 
 	return state
 }

@@ -63,6 +63,15 @@ func (r *GormCareerRepository) ListCareerDirectionsByCompany(ctx context.Context
 	return directions, err
 }
 
+func (r *GormCareerRepository) FindCareerDirectionByID(ctx context.Context, careerDirectionID int64) (models.CareerDirection, error) {
+	var direction models.CareerDirection
+	err := r.db.WithContext(ctx).
+		Preload("Company").
+		Preload("InterestTags.InterestTag").
+		First(&direction, careerDirectionID).Error
+	return direction, err
+}
+
 func (r *GormCareerRepository) FindActiveOpportunity(ctx context.Context, companyID, careerDirectionID int64, regionID int64) (models.CompanyOpportunity, error) {
 	var opportunity models.CompanyOpportunity
 	err := r.db.WithContext(ctx).

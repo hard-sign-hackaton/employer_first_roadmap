@@ -1,3 +1,4 @@
 .env
 efr_bot
 tmp/
+.idea/

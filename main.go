@@ -23,11 +23,16 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Обработка событий
-	bot.Handle(maxbot.OnBotStarted, handlers.DemoMenuHandler)
-	bot.Handle(maxbot.OnMessageCreated, handlers.DemoMessageListenerHandler)
+	// ========== Обработка событий ==========
+	bot.Handle(maxbot.OnBotStarted, handlers.CreateUser)
+	bot.Handle(maxbot.OnMessageCreated, handlers.GlobalMessageListener)
 
-	// Обработка коллбеков
+	// ========== Обработка коллбеков ==========
+	// Малый опрос
+	bot.HandleCallback("/small_survey", handlers.CallSmallSurvey)
+	// Большой опрос
+	bot.HandleCallback("/big_survey", handlers.CallBigSurvey)
+
 	bot.HandleCallback("/menu", handlers.DemoMenuHandler)
 	bot.HandleCallback("/demo", handlers.DemoRequestHandler)
 	bot.HandleCallback("/form", handlers.DemoFormHandler)

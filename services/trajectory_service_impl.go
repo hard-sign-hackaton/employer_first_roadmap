@@ -209,14 +209,10 @@ func (s *trajectoryService) GetRecommendedExamSets(ctx context.Context, request 
 	if request.CareerDirectionID <= 0 {
 		return nil, fmt.Errorf("career_direction_id must be positive")
 	}
-	if request.AdmissionYear < 2020 || request.AdmissionYear > 2100 {
-		return nil, fmt.Errorf("admission_year must be between 2020 and 2100")
-	}
-
 	if _, err := s.careers.FindCareerDirectionByID(ctx, request.CareerDirectionID); err != nil {
 		return nil, fmt.Errorf("find career direction: %w", err)
 	}
-	combinations, err := s.education.ListExamCombinationsForDirection(ctx, request.CareerDirectionID, request.AdmissionYear)
+	combinations, err := s.education.ListLatestExamCombinationsForDirection(ctx, request.CareerDirectionID, int16(time.Now().Year()))
 	if err != nil {
 		return nil, fmt.Errorf("list exam combinations: %w", err)
 	}
@@ -225,6 +221,7 @@ func (s *trajectoryService) GetRecommendedExamSets(ctx context.Context, request 
 		ids         []int64
 		subjects    []dto.ExamSubjectResponse
 		description string
+		sourceYear  int16
 	}
 	uniqueSets := make(map[string]examSet)
 	for _, combination := range combinations {
@@ -244,6 +241,7 @@ func (s *trajectoryService) GetRecommendedExamSets(ctx context.Context, request 
 			ids:         ids,
 			subjects:    subjects,
 			description: examSetDescription(combination),
+			sourceYear:  combination.AdmissionYear,
 		}
 	}
 
@@ -260,6 +258,7 @@ func (s *trajectoryService) GetRecommendedExamSets(ctx context.Context, request 
 			ExamSubjectIDs: set.ids,
 			Subjects:       set.subjects,
 			Description:    set.description,
+			SourceYear:     set.sourceYear,
 		})
 	}
 	return result, nil

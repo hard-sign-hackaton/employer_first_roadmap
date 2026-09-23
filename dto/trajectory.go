@@ -54,12 +54,12 @@ type RecommendedExamSetResponse struct {
 	ExamSubjectIDs []int64               `json:"exam_subject_ids"`
 	Subjects       []ExamSubjectResponse `json:"subjects"`
 	Description    string                `json:"description,omitempty"`
+	SourceYear     int16                 `json:"source_year"`
 }
 
 // GetRecommendedExamSetsRequest запрашивает наборы ЕГЭ для выбранного карьерного направления.
 type GetRecommendedExamSetsRequest struct {
 	CareerDirectionID int64 `json:"career_direction_id"`
-	AdmissionYear     int16 `json:"admission_year"`
 }
 
 // ConfirmGoalRequest создаёт цель после выбора компании, направления и набора ЕГЭ.

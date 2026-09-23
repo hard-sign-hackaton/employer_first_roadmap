@@ -4,6 +4,7 @@ import (
 	. "efr_bot/models"
 	"efr_bot/utils"
 	"fmt"
+	"strings"
 
 	"github.com/max-messenger/max-bot-api-client-go/v2/model"
 	"github.com/max-messenger/maxbot"
@@ -11,8 +12,15 @@ import (
 
 func GlobalMessageListener(ctx maxbot.Context) error {
 	userID := ctx.Update().UserID
+	if strings.TrimSpace(ctx.Update().Message.Body.Text) == "/start" {
+		utils.UpdateUserStateStorage(userID, UserStateStart)
+		return CallMenu(ctx)
+	}
 
 	userState := utils.GetUserState(userID)
+	if strings.HasPrefix(string(userState), "small_survey_") {
+		return handleSmallSurveyMessage(ctx)
+	}
 
 	switch userState {
 	case UserStateStart:

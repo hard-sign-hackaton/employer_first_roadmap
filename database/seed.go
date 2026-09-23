@@ -166,7 +166,7 @@ func seedEducation(tx *gorm.DB, regions map[string]models.Region, subjects map[s
 				return nil, err
 			}
 		}
-		for _, year := range []int16{2026, 2027} {
+		for _, year := range []int16{2026} {
 			for index, names := range item.combinations {
 				combinationName := fmt.Sprintf("Демо-набор %d: %s", index+1, strings.Join(names, " + "))
 				combination := models.ExamCombination{EducationProgramID: program.ID, AdmissionYear: year, Name: &combinationName}
@@ -203,7 +203,7 @@ func demoMinimumScore(subject string) int16 {
 }
 
 func seedAdmissionRules(tx *gorm.DB) error {
-	for _, year := range []int16{2026, 2027} {
+	for _, year := range []int16{2026} {
 		rule := models.AdmissionCampaignRule{AdmissionYear: year, MaxUniversities: 5, MaxProgramsPerUniversity: 5}
 		if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "admission_year"}}, DoUpdates: clause.AssignmentColumns([]string{"max_universities", "max_programs_per_university"})}).Create(&rule).Error; err != nil {
 			return err

@@ -51,10 +51,37 @@ func GlobalMessageListener(ctx maxbot.Context) error {
 		utils.UpdateUserStateStorage(userID, UserStateSmallSurveyWaitingRelocation)
 
 		kb := model.NewKeyboard()
-		kb.AddRow().AddCallBack("Да", "/small_relocate_yes").AddCallBack("Нет", "/small_relocate_no")
+		kb.AddRow().AddMessage("Да").AddMessage("Нет")
 		return ctx.Send("4. Вы готовы рассмотреть обучение в другом регионе?", maxbot.WithKeyboard(kb))
 
+	case UserStateSmallSurveyWaitingRelocation:
+		// TODO: записать статус для релокации (от ответа)
+		// answer := ctx.Update().Message.Body.Text
+
+		utils.UpdateUserStateStorage(userID, UserStateSmallSurveyWaitingExamSelection)
+
+		kb := model.NewKeyboard()
+		kb.AddRow().AddMessage("Да").AddMessage("Нет")
+		return ctx.Send("5. Вы уже выбрали предметы на ЕГЭ?", maxbot.WithKeyboard(kb))
+
 	case UserStateSmallSurveyWaitingExamSelection:
+		answer := ctx.Update().Message.Body.Text
+		if answer == "Нет" {
+			utils.UpdateUserStateStorage(userID, UserStateSurveyCompleted)
+			return CallMenu(ctx)
+		}
+
+		utils.UpdateUserStateStorage(userID, UserStateSmallSurveyWaitingExamSubject)
+
+		// TODO: получить список предметов
+
+		kb := model.NewKeyboard()
+		kb.AddRow().AddMessage("Предмет 1")
+		kb.AddRow().AddMessage("Предмет 2")
+		kb.AddRow().AddMessage("Предмет 3")
+		return ctx.Send("Какой из экзаменов вы будете сдавать?", maxbot.WithKeyboard(kb))
+
+	case UserStateSmallSurveyWaitingExamSubject:
 		exam := ctx.Update().Message.Body.Text
 
 		// TODO: записать предмет пользователя в бд
@@ -87,10 +114,43 @@ func GlobalMessageListener(ctx maxbot.Context) error {
 		utils.UpdateUserStateStorage(userID, UserStateBigSurveyWaitingRelocation)
 
 		kb := model.NewKeyboard()
-		kb.AddRow().AddCallBack("Да", "/big_relocate_yes").AddCallBack("Нет", "/big_relocate_no")
+		kb.AddRow().AddMessage("Да").AddMessage("Нет")
 		return ctx.Send("3. Вы готовы рассмотреть обучение в другом регионе?", maxbot.WithKeyboard(kb))
 
+	case UserStateBigSurveyWaitingRelocation:
+		// TODO: записать статус для релокации (от ответа)
+		// answer := ctx.Update().Message.Body.Text
+
+		utils.UpdateUserStateStorage(userID, UserStateBigSurveyWaitingExamSelection)
+
+		kb := model.NewKeyboard()
+		kb.AddRow().AddMessage("Да").AddMessage("Нет")
+		return ctx.Send("4. Вы уже выбрали предметы на ЕГЭ?", maxbot.WithKeyboard(kb))
+
 	case UserStateBigSurveyWaitingExamSelection:
+		answer := ctx.Update().Message.Body.Text
+		if answer == "Нет" {
+			utils.UpdateUserStateStorage(userID, UserStateBigSurveyWaitingInterest)
+
+			// TODO: получить список активностей/интересов
+			kb := model.NewKeyboard()
+			kb.AddRow().AddMessage("1")
+			kb.AddRow().AddMessage("2")
+			kb.AddRow().AddMessage("3")
+			return ctx.Send("Что из этого вам было бы интереснее всего делать?", maxbot.WithKeyboard(kb))
+		}
+
+		utils.UpdateUserStateStorage(userID, UserStateBigSurveyWaitingExamSubject)
+
+		// TODO: получить список предметов
+
+		kb := model.NewKeyboard()
+		kb.AddRow().AddMessage("Предмет 1")
+		kb.AddRow().AddMessage("Предмет 2")
+		kb.AddRow().AddMessage("Предмет 3")
+		return ctx.Send("Какой из экзаменов вы будете сдавать?", maxbot.WithKeyboard(kb))
+
+	case UserStateBigSurveyWaitingExamSubject:
 		exam := ctx.Update().Message.Body.Text
 
 		// TODO: записать предмет пользователя в бд

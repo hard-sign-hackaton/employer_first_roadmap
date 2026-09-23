@@ -12,12 +12,14 @@ const (
 	UserStateSmallSurveyWaitingRegion        UserState = "small_survey_waiting_region"
 	UserStateSmallSurveyWaitingRelocation    UserState = "small_survey_waiting_relocation"
 	UserStateSmallSurveyWaitingExamSelection UserState = "small_survey_waiting_exam_selection"
+	UserStateSmallSurveyWaitingExamSubject   UserState = "small_survey_waiting_exam_subject"
 
 	// Big survey
 	UserStateBigSurveyWaitingGrade         UserState = "big_survey_waiting_grade"
 	UserStateBigSurveyWaitingRegion        UserState = "big_survey_waiting_region"
 	UserStateBigSurveyWaitingRelocation    UserState = "big_survey_waiting_relocation"
 	UserStateBigSurveyWaitingExamSelection UserState = "big_survey_waiting_exam_selection"
+	UserStateBigSurveyWaitingExamSubject UserState = "big_survey_waiting_exam_subject"
 	UserStateBigSurveyWaitingExamScore     UserState = "big_survey_waiting_exam_score"
 	UserStateBigSurveyWaitingInterest      UserState = "big_survey_waiting_interest"
 	UserStateBigSurveyWaitingSubjects      UserState = "big_survey_waiting_subjects"

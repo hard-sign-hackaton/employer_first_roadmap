@@ -28,6 +28,11 @@ func main() {
 	if err := database.AutoMigrate(db); err != nil {
 		log.Fatalf("Не удалось применить миграции: %v", err)
 	}
+	if database.DemoSeedEnabled() {
+		if err := database.SeedDemoData(db); err != nil {
+			log.Fatalf("Не удалось заполнить демонстрационные данные: %v", err)
+		}
+	}
 
 	sqlDB, err := db.DB()
 	if err != nil {

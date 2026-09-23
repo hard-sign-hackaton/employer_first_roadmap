@@ -1,0 +1,22 @@
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: employer_first_roadmap_demo
+      POSTGRES_USER: efr_demo
+      POSTGRES_PASSWORD: efr_demo_password
+    volumes:
+      - postgres_demo_data:/var/lib/postgresql/data
+
+  efr_bot:
+    environment:
+      APP_ENV: demo
+      SEED_DEMO_DATA: "true"
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: employer_first_roadmap_demo
+      DB_USER: efr_demo
+      DB_PASSWORD: efr_demo_password
+      DB_SSLMODE: disable
+
+volumes:
+  postgres_demo_data:

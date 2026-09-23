@@ -21,6 +21,9 @@ func GlobalMessageListener(ctx maxbot.Context) error {
 	if strings.HasPrefix(string(userState), "small_survey_") {
 		return handleSmallSurveyMessage(ctx)
 	}
+	if strings.HasPrefix(string(userState), "big_survey_") {
+		return handleBigSurveyMessage(ctx)
+	}
 
 	switch userState {
 	case UserStateStart:

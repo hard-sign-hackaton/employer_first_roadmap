@@ -30,7 +30,30 @@ func (s *profileService) GetProfile(ctx context.Context, userID int64) (dto.Prof
 	return dto.ProfileResponse{UserID: p.ID, Grade: p.Grade, Region: dto.RegionResponse{ID: p.Region.ID, Name: p.Region.Name}, WillingToRelocate: p.WillingToRelocate}, err
 }
 func (s *profileService) SaveSurveyInterests(ctx context.Context, userID int64, request dto.SaveSurveyInterestsRequest) ([]dto.InterestResponse, error) {
-	return nil, fmt.Errorf("full survey is not implemented")
+	if _, err := s.store.FindProfileByUserID(ctx, userID); err != nil {
+		return nil, fmt.Errorf("find user profile: %w", err)
+	}
+	interests := make([]models.UserInterest, 0, len(request.Interests))
+	seen := make(map[int64]struct{}, len(request.Interests))
+	for _, item := range request.Interests {
+		if item.InterestTagID <= 0 || item.Weight < 0 {
+			return nil, fmt.Errorf("invalid interest")
+		}
+		if _, exists := seen[item.InterestTagID]; exists {
+			return nil, fmt.Errorf("interest tag %d is duplicated", item.InterestTagID)
+		}
+		seen[item.InterestTagID] = struct{}{}
+		interests = append(interests, models.UserInterest{InterestTagID: item.InterestTagID, Weight: item.Weight})
+	}
+	saved, err := s.store.ReplaceUserInterests(ctx, userID, interests)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]dto.InterestResponse, 0, len(saved))
+	for _, item := range saved {
+		result = append(result, dto.InterestResponse{InterestTagID: item.InterestTagID, Name: item.InterestTag.Name, Weight: item.Weight})
+	}
+	return result, nil
 }
 func (s *profileService) SaveUserSubjects(ctx context.Context, userID int64, request dto.SaveUserSubjectsRequest) ([]dto.UserSubjectResponse, error) {
 	items := make([]models.UserSubject, 0, len(request.Subjects))

@@ -68,7 +68,34 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 			return ctx.Send("Не удалось сохранить профиль.")
 		}
 		if s.Grade == 11 {
-			return ctx.Send("Ветка 11 класса с уже выбранными ЕГЭ будет подключена следующим шагом. Сейчас доступен сценарий 9–10 класса.")
+			utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingExamSelection)
+			keyboard := model.NewKeyboard()
+			keyboard.AddRow().AddMessage("Да").AddMessage("Нет")
+			return ctx.Send("5. Вы уже выбрали предметы ЕГЭ?", maxbot.WithKeyboard(keyboard))
+		}
+		return showDirections(ctx)
+	case models.UserStateSmallSurveyWaitingExamSelection:
+		if text == "Да" {
+			return showExamSubjectSelection(ctx, models.UserStateSmallSurveyWaitingExamSubject)
+		}
+		if text == "Нет" {
+			return showDirections(ctx)
+		}
+		return ctx.Send("Выберите «Да» или «Нет».")
+	case models.UserStateSmallSurveyWaitingExamSubject:
+		if !chooseExamSubjects(s, text) {
+			return ctx.Send("Введите номера выбранных ЕГЭ через запятую, например: 1,3,5.")
+		}
+		utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingExamScore)
+		keyboard := model.NewKeyboard()
+		keyboard.AddRow().AddMessage("Пропустить")
+		return ctx.Send("Если знаете ожидаемые баллы, укажите их в формате «1:80,2:75» — номера относятся к выбранным предметам. Или нажмите «Пропустить».", maxbot.WithKeyboard(keyboard))
+	case models.UserStateSmallSurveyWaitingExamScore:
+		if !saveExpectedScores(s, text) {
+			return ctx.Send("Неверный формат. Используйте «1:80,2:75» или «Пропустить».")
+		}
+		if err := saveSelectedExamSubjects(ctx); err != nil {
+			return ctx.Send("Не удалось сохранить выбранные ЕГЭ.")
 		}
 		return showDirections(ctx)
 	case models.UserStateSmallSurveyWaitingDirection:
@@ -78,6 +105,9 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 		}
 		s.CareerDirectionID = s.DirectionIDs[n]
 		s.CareerDirectionName = s.DirectionNames[n]
+		if s.Grade == 11 && len(s.SelectedExamIDs) > 0 {
+			return showGoalConfirmation(ctx, models.UserStateSmallSurveyWaitingGoalConfirmation)
+		}
 		sets, err := app.Trajectory.GetRecommendedExamSets(context.Background(), dto.GetRecommendedExamSetsRequest{CareerDirectionID: s.CareerDirectionID})
 		if err != nil {
 			return ctx.Send("Не удалось подобрать наборы ЕГЭ.")
@@ -113,17 +143,7 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 		}
 		s.PlannedExamIDs = s.ExamSets[n]
 		s.PlannedExamNames = s.ExamSetNames[n]
-		utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingGoalConfirmation)
-		keyboard := model.NewKeyboard()
-		keyboard.AddRow().AddMessage("Подтвердить").AddMessage("Изменить направление")
-		return ctx.Send(
-			"Цель:\n"+
-				"Компания: "+s.CompanyName+"\n"+
-				"Направление: "+s.CareerDirectionName+"\n"+
-				"Планируемые ЕГЭ: "+strings.Join(s.PlannedExamNames, ", ")+"\n\n"+
-				"Подтвердить цель?",
-			maxbot.WithKeyboard(keyboard),
-		)
+		return showGoalConfirmation(ctx, models.UserStateSmallSurveyWaitingGoalConfirmation)
 	case models.UserStateSmallSurveyWaitingGoalConfirmation:
 		if text == "Изменить направление" {
 			return showDirections(ctx)
@@ -157,6 +177,12 @@ func showDirections(ctx maxbot.Context) error {
 	dirs, err := app.Trajectory.GetCareerDirections(context.Background(), id, dto.GetCareerDirectionsRequest{CompanyID: s.CompanyID})
 	if err != nil {
 		return ctx.Send("Не удалось получить направления.")
+	}
+	if len(dirs) == 0 {
+		if s.Grade == 11 && len(s.SelectedExamIDs) > 0 {
+			return ctx.Send("В выбранной компании нет направлений, совместимых с выбранными ЕГЭ и ожидаемыми баллами. Начните опрос заново командой /start, чтобы изменить компанию или ЕГЭ.")
+		}
+		return ctx.Send("Для выбранной компании пока нет направлений. Начните опрос заново командой /start.")
 	}
 	kb := model.NewKeyboard()
 	s.DirectionIDs = nil

@@ -23,11 +23,20 @@ type SmallSurveyData struct {
 	PlannedExamIDs                         []int64
 	CompanyName, CareerDirectionName       string
 	PlannedExamNames                       []string
+	SelectedExamIDs                        []int64
+	SelectedExamNames                      []string
+	SelectedExamScores                     map[int64]*int16
 	WillingToRelocate                      bool
 	CompanyIDs, RegionIDs, DirectionIDs    []int64
 	DirectionNames                         []string
 	ExamSets                               [][]int64
 	ExamSetNames                           [][]string
+	AvailableExamIDs                       []int64
+	AvailableExamNames                     []string
+	ActivityTagIDs                         []int64
+	ActivityTagNames                       []string
+	SelectedActivityTagIDs                 []int64
+	SelectedSchoolSubjectNames             []string
 }
 
 func ResetSmallSurvey(id int64) { mu.Lock(); SmallSurveyStorage[id] = &SmallSurveyData{}; mu.Unlock() }

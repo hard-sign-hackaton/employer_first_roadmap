@@ -30,7 +30,7 @@ func proceedToExamsSelection(ctx maxbot.Context) error {
 	utils.UpdateUserStateStorage(userID, UserStateSmallSurveyWaitingExamSelection)
 
 	kb := model.NewKeyboard()
-	kb.AddRow().AddCallBack("Да", "/exam_selection_yes").AddCallBack("Нет", "/exam_selections_no")
+	kb.AddRow().AddCallBack("Да", "/small_exam_selection_yes").AddCallBack("Нет", "/small_exam_selection_no")
 	return ctx.Send("5. Вы уже выбрали предметы на ЕГЭ?", maxbot.WithKeyboard(kb))
 }
 

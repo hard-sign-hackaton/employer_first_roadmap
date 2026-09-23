@@ -23,16 +23,23 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Обработка событий
+	// ========== Обработка событий ==========
 	bot.Handle(maxbot.OnBotStarted, handlers.CreateUser)
 	bot.Handle(maxbot.OnMessageCreated, handlers.GlobalMessageListener)
 
-	// Обработка коллбеков
+	// ========== Обработка коллбеков ==========
+	// Малый опрос
 	bot.HandleCallback("/small_survey", handlers.CallSmallSurvey)
-	bot.HandleCallback("/relocate_yes", handlers.SmallSurveyRelocationConfirm)
-	bot.HandleCallback("/relocate_no", handlers.SmallSurveyRelocationDeny)
-	bot.HandleCallback("/exam_selection_yes", handlers.SmallSurveyExamSelectionConfirm)
-	bot.HandleCallback("/exam_selection_no", handlers.SmallSurveyExamSelectionDeny)
+	bot.HandleCallback("/small_relocate_yes", handlers.SmallSurveyRelocationConfirm)
+	bot.HandleCallback("/small_relocate_no", handlers.SmallSurveyRelocationDeny)
+	bot.HandleCallback("/small_exam_selection_yes", handlers.SmallSurveyExamSelectionConfirm)
+	bot.HandleCallback("/small_exam_selection_no", handlers.SmallSurveyExamSelectionDeny)
+	// Большой опрос
+	bot.HandleCallback("/big_survey", handlers.CallBigSurvey)
+	bot.HandleCallback("/big_relocate_yes", handlers.BigSurveyRelocationConfirm)
+	bot.HandleCallback("/big_relocate_no", handlers.BigSurveyRelocationDeny)
+	bot.HandleCallback("/big_exam_selection_yes", handlers.BigSurveyExamSelectionConfirm)
+	bot.HandleCallback("/big_exam_selection_no", handlers.BigSurveyExamSelectionDeny)
 
 	bot.HandleCallback("/menu", handlers.DemoMenuHandler)
 	bot.HandleCallback("/demo", handlers.DemoRequestHandler)

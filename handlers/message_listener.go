@@ -12,9 +12,7 @@ import (
 func GlobalMessageListener(ctx maxbot.Context) error {
 	userID := ctx.Update().UserID
 
-	utils.UserStateStorageMutex.Lock()
-	userState := utils.UserStateStorage[userID]
-	utils.UserStateStorageMutex.Unlock()
+	userState := utils.GetUserState(userID)
 
 	switch userState {
 	case UserStateStart:

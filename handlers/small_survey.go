@@ -10,9 +10,7 @@ import (
 func CallSmallSurvey(ctx maxbot.Context) error {
 	userID := ctx.Update().UserID
 
-	utils.UserStateStorageMutex.Lock()
-	utils.UserStateStorage[userID] = UserStateSmallSurveyWaitingCompanyName
-	utils.UserStateStorageMutex.Unlock()
+	utils.UpdateUserStateStorage(userID, UserStateSmallSurveyWaitingCompanyName)
 
 	return ctx.Send("1. Введите название компании:")
 }

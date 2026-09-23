@@ -27,6 +27,7 @@ func CallMenu(ctx maxbot.Context) error {
 		kb.AddRow().AddCallBack("Да", "/small_survey").AddCallBack("Нет", "/big_survey")
 		return ctx.Send("Вы знаете компанию, в которой хотели бы работать?", maxbot.WithKeyboard(kb))
 	case UserStateSurveyCompleted:
+		// TODO: получать список направлений из бд
 		kb.AddRow().AddCallBack("Работа 1", "/")
 		kb.AddRow().AddCallBack("Работа 2", "/")
 		kb.AddRow().AddCallBack("Работа 3", "/")

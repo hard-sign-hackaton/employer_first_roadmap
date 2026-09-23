@@ -31,6 +31,8 @@ func main() {
 	bot.HandleCallback("/small_survey", handlers.CallSmallSurvey)
 	bot.HandleCallback("/relocate_yes", handlers.SmallSurveyRelocationConfirm)
 	bot.HandleCallback("/relocate_no", handlers.SmallSurveyRelocationDeny)
+	bot.HandleCallback("/exam_selection_yes", handlers.SmallSurveyExamSelectionConfirm)
+	bot.HandleCallback("/exam_selection_no", handlers.SmallSurveyExamSelectionDeny)
 
 	bot.HandleCallback("/menu", handlers.DemoMenuHandler)
 	bot.HandleCallback("/demo", handlers.DemoRequestHandler)

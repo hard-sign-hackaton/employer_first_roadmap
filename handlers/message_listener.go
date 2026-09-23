@@ -46,13 +46,24 @@ func GlobalMessageListener(ctx maxbot.Context) error {
 
 		// TODO: записать регион пользователя в бд
 
-		ctx.Send(fmt.Sprintf("Выбран Region: %s", region))
+		ctx.Send(fmt.Sprintf("Выбран регион: %s", region))
 
-		// utils.UpdateUserStorage(userID, UserStateSmallSurveyWaitingRelocation)
+		utils.UpdateUserStateStorage(userID, UserStateSmallSurveyWaitingRelocation)
 
 		kb := model.NewKeyboard()
 		kb.AddRow().AddCallBack("Да", "/relocate_yes").AddCallBack("Нет", "/relocate_no")
 		return ctx.Send("4. Вы готовы рассмотреть обучение в другом регионе?", maxbot.WithKeyboard(kb))
+
+	case UserStateSmallSurveyWaitingExamSelection:
+		exam := ctx.Update().Message.Body.Text
+
+		// TODO: записать предмет пользователя в бд
+
+		ctx.Send(fmt.Sprintf("Выбран предмет: %s",  exam))
+
+		utils.UpdateUserStateStorage(userID, UserStateSurveyCompleted)
+
+		return CallMenu(ctx)
 	}
 
 	return nil

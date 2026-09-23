@@ -10,10 +10,7 @@ import (
 )
 
 func init() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Unable to read env")
-	}
+	godotenv.Load()
 }
 
 func main() {

@@ -1,0 +1,367 @@
+// Package integration проверяет бизнес-сценарии через реальные сервисы,
+// репозитории GORM и изолированную PostgreSQL, но без подключения к MAX.
+package integration
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"testing"
+	"time"
+
+	"efr_bot/database"
+	"efr_bot/dto"
+	"efr_bot/models"
+	"efr_bot/repositories"
+	"efr_bot/services"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+)
+
+const scenarioUserID int64 = 9_001_001
+
+type scenarioTestStats struct {
+	total  int
+	passed int
+	failed int
+}
+
+var stats scenarioTestStats
+
+// TestMain печатает компактную сводку после всех интеграционных сценариев.
+func TestMain(m *testing.M) {
+	exitCode := m.Run()
+	fmt.Printf("\nИнтеграционные сценарии: всего %d, пройдено %d, упало %d\n", stats.total, stats.passed, stats.failed)
+	os.Exit(exitCode)
+}
+
+func runScenario(t *testing.T, name string, test func(t *testing.T)) {
+	t.Helper()
+	stats.total++
+	defer func() {
+		if t.Failed() {
+			stats.failed++
+			return
+		}
+		stats.passed++
+	}()
+	t.Run(name, test)
+}
+
+// TestSmallSurveyScenarioCreatesRoadmap повторяет реализованный путь 9–10 класса:
+// работодатель → профиль → направление → набор ЕГЭ → цель → roadmap.
+func TestSmallSurveyScenarioCreatesRoadmap(t *testing.T) {
+	runScenario(t, "10 класс: компания → ЕГЭ → цель → roadmap", testSmallSurveyScenarioCreatesRoadmap)
+}
+
+func testSmallSurveyScenarioCreatesRoadmap(t *testing.T) {
+	db := openScenarioDatabase(t)
+	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatalf("begin scenario transaction: %v", tx.Error)
+	}
+	t.Cleanup(func() { _ = tx.Rollback().Error })
+
+	profileStore := repositories.NewGormProfileRepository(tx)
+	careerStore := repositories.NewGormCareerRepository(tx)
+	educationStore := repositories.NewGormEducationRepository(tx)
+	roadmapStore := repositories.NewGormRoadmapRepository(tx)
+
+	profileService := services.NewProfileService(profileStore)
+	trajectoryService := services.NewTrajectoryService(careerStore, educationStore, profileStore, roadmapStore)
+	roadmapService := services.NewRoadmapService(roadmapStore, careerStore)
+	ctx := context.Background()
+
+	company := companyByName(t, trajectoryService, ctx, "Т1")
+	regionID := regionIDByName(t, db, "Пермский край")
+
+	if _, err := profileService.SaveProfile(ctx, scenarioUserID, dto.UpsertProfileRequest{
+		Grade:             10,
+		RegionID:          regionID,
+		WillingToRelocate: false,
+	}); err != nil {
+		t.Fatalf("save profile: %v", err)
+	}
+
+	selectedCompany, err := trajectoryService.SelectCompany(ctx, scenarioUserID, dto.SelectCompanyRequest{CompanyID: company.ID})
+	if err != nil {
+		t.Fatalf("select company: %v", err)
+	}
+	if selectedCompany.Name != "Т1" {
+		t.Fatalf("selected company = %q, want Т1", selectedCompany.Name)
+	}
+
+	directions, err := trajectoryService.GetCareerDirections(ctx, scenarioUserID, dto.GetCareerDirectionsRequest{CompanyID: company.ID})
+	if err != nil {
+		t.Fatalf("get career directions: %v", err)
+	}
+	direction := directionByName(t, directions, "Разработчик программного обеспечения")
+
+	examSets, err := trajectoryService.GetRecommendedExamSets(ctx, dto.GetRecommendedExamSetsRequest{CareerDirectionID: direction.ID})
+	if err != nil {
+		t.Fatalf("get recommended exam sets: %v", err)
+	}
+	if len(examSets) == 0 || len(examSets[0].ExamSubjectIDs) == 0 {
+		t.Fatal("expected at least one non-empty EGE set")
+	}
+	if examSets[0].SourceYear != 2026 {
+		t.Fatalf("source year = %d, want latest published demo rules for 2026", examSets[0].SourceYear)
+	}
+
+	plannedSubjects := make([]dto.UserSubjectInput, 0, len(examSets[0].ExamSubjectIDs))
+	for _, subjectID := range examSets[0].ExamSubjectIDs {
+		plannedSubjects = append(plannedSubjects, dto.UserSubjectInput{
+			ExamSubjectID: subjectID,
+			Status:        models.SubjectStatusPlanned,
+		})
+	}
+	savedSubjects, err := profileService.SaveUserSubjects(ctx, scenarioUserID, dto.SaveUserSubjectsRequest{Subjects: plannedSubjects})
+	if err != nil {
+		t.Fatalf("save planned EGE subjects: %v", err)
+	}
+	if len(savedSubjects) != len(plannedSubjects) {
+		t.Fatalf("saved subjects = %d, want %d", len(savedSubjects), len(plannedSubjects))
+	}
+
+	targetYear := expectedTargetAdmissionYear(10, time.Now())
+	goal, err := trajectoryService.ConfirmGoal(ctx, scenarioUserID, dto.ConfirmGoalRequest{
+		CareerDirectionID:   direction.ID,
+		TargetAdmissionYear: targetYear,
+	})
+	if err != nil {
+		t.Fatalf("confirm goal: %v", err)
+	}
+	if goal.Company.Name != "Т1" || goal.CareerDirection.Name != direction.Name {
+		t.Fatalf("unexpected goal: company=%q direction=%q", goal.Company.Name, goal.CareerDirection.Name)
+	}
+	if goal.TargetAdmissionYear != targetYear {
+		t.Fatalf("target admission year = %d, want %d", goal.TargetAdmissionYear, targetYear)
+	}
+	if len(goal.Subjects) != len(plannedSubjects) {
+		t.Fatalf("goal contains %d subjects, want %d", len(goal.Subjects), len(plannedSubjects))
+	}
+
+	roadmap, err := roadmapService.CreateRoadmap(ctx, scenarioUserID, dto.CreateRoadmapRequest{GoalID: goal.ID})
+	if err != nil {
+		t.Fatalf("create roadmap: %v", err)
+	}
+	if roadmap.Status != models.RoadmapStatusActive {
+		t.Fatalf("roadmap status = %q, want %q", roadmap.Status, models.RoadmapStatusActive)
+	}
+	if len(roadmap.Steps) == 0 || roadmap.NextAction == nil {
+		t.Fatal("roadmap must contain steps and a next action")
+	}
+	if roadmap.Steps[0].Status != models.RoadmapStepStatusActive {
+		t.Fatalf("first roadmap step status = %q, want %q", roadmap.Steps[0].Status, models.RoadmapStepStatusActive)
+	}
+
+	var persistedGoal models.UserGoal
+	if err := tx.Preload("CareerDirection.Company").First(&persistedGoal, "id = ?", goal.ID).Error; err != nil {
+		t.Fatalf("load persisted goal: %v", err)
+	}
+	if persistedGoal.CareerDirection.Company.Name != "Т1" || persistedGoal.CareerDirection.Name != direction.Name {
+		t.Fatalf("persisted goal does not match selected trajectory")
+	}
+
+	var activeRoadmaps int64
+	if err := tx.Model(&models.Roadmap{}).
+		Where("user_goal_id = ? AND status = ?", goal.ID, models.RoadmapStatusActive).
+		Count(&activeRoadmaps).Error; err != nil {
+		t.Fatalf("count active roadmaps: %v", err)
+	}
+	if activeRoadmaps != 1 {
+		t.Fatalf("active roadmaps = %d, want 1", activeRoadmaps)
+	}
+}
+
+// TestSmallSurveyScenarioForNinthGrade проверяет отдельную развилку 9 класса.
+// Она должна сформировать тот же общий roadmap, но с более поздним годом поступления.
+func TestSmallSurveyScenarioForNinthGrade(t *testing.T) {
+	runScenario(t, "9 класс: компания → ЕГЭ → цель → roadmap", testSmallSurveyScenarioForNinthGrade)
+}
+
+func testSmallSurveyScenarioForNinthGrade(t *testing.T) {
+	db := openScenarioDatabase(t)
+	tx := beginScenarioTransaction(t, db)
+	profileService, trajectoryService, roadmapService := scenarioServices(tx)
+	ctx := context.Background()
+	userID := scenarioUserID + 1
+
+	company := companyByName(t, trajectoryService, ctx, "Т1")
+	regionID := regionIDByName(t, db, "Пермский край")
+	if _, err := profileService.SaveProfile(ctx, userID, dto.UpsertProfileRequest{Grade: 9, RegionID: regionID}); err != nil {
+		t.Fatalf("save ninth-grade profile: %v", err)
+	}
+	if _, err := trajectoryService.SelectCompany(ctx, userID, dto.SelectCompanyRequest{CompanyID: company.ID}); err != nil {
+		t.Fatalf("select company: %v", err)
+	}
+	directions, err := trajectoryService.GetCareerDirections(ctx, userID, dto.GetCareerDirectionsRequest{CompanyID: company.ID})
+	if err != nil {
+		t.Fatalf("get directions: %v", err)
+	}
+	direction := directionByName(t, directions, "Разработчик программного обеспечения")
+	examSets, err := trajectoryService.GetRecommendedExamSets(ctx, dto.GetRecommendedExamSetsRequest{CareerDirectionID: direction.ID})
+	if err != nil || len(examSets) == 0 {
+		t.Fatalf("get EGE sets: %v; sets=%d", err, len(examSets))
+	}
+	inputs := make([]dto.UserSubjectInput, 0, len(examSets[0].ExamSubjectIDs))
+	for _, id := range examSets[0].ExamSubjectIDs {
+		inputs = append(inputs, dto.UserSubjectInput{ExamSubjectID: id, Status: models.SubjectStatusPlanned})
+	}
+	if _, err := profileService.SaveUserSubjects(ctx, userID, dto.SaveUserSubjectsRequest{Subjects: inputs}); err != nil {
+		t.Fatalf("save planned EGE subjects: %v", err)
+	}
+	targetYear := expectedTargetAdmissionYear(9, time.Now())
+	goal, err := trajectoryService.ConfirmGoal(ctx, userID, dto.ConfirmGoalRequest{CareerDirectionID: direction.ID, TargetAdmissionYear: targetYear})
+	if err != nil {
+		t.Fatalf("confirm goal: %v", err)
+	}
+	if goal.TargetAdmissionYear != targetYear {
+		t.Fatalf("target admission year = %d, want %d", goal.TargetAdmissionYear, targetYear)
+	}
+	roadmap, err := roadmapService.CreateRoadmap(ctx, userID, dto.CreateRoadmapRequest{GoalID: goal.ID})
+	if err != nil {
+		t.Fatalf("create roadmap: %v", err)
+	}
+	if len(roadmap.Steps) == 0 || roadmap.NextAction == nil {
+		t.Fatal("ninth-grade roadmap must contain steps and next action")
+	}
+}
+
+// TestSurveyServicesRejectInvalidTransitions фиксирует бизнес-ограничения
+// до создания roadmap: нельзя использовать пустые или несуществующие идентификаторы,
+// профиль вне аудитории 9–11 классов и цель без сохранённого профиля.
+func TestSurveyServicesRejectInvalidTransitions(t *testing.T) {
+	runScenario(t, "негативные переходы опроса", testSurveyServicesRejectInvalidTransitions)
+}
+
+func testSurveyServicesRejectInvalidTransitions(t *testing.T) {
+	db := openScenarioDatabase(t)
+	tx := beginScenarioTransaction(t, db)
+	profileService, trajectoryService, roadmapService := scenarioServices(tx)
+	ctx := context.Background()
+
+	regionID := regionIDByName(t, db, "Пермский край")
+	if _, err := profileService.SaveProfile(ctx, scenarioUserID+2, dto.UpsertProfileRequest{Grade: 8, RegionID: regionID}); err == nil {
+		t.Fatal("profile for grade 8 must be rejected")
+	}
+	if _, err := trajectoryService.SelectCompany(ctx, scenarioUserID+2, dto.SelectCompanyRequest{}); err == nil {
+		t.Fatal("empty company id must be rejected")
+	}
+	if _, err := trajectoryService.SelectCompany(ctx, scenarioUserID+2, dto.SelectCompanyRequest{CompanyID: 999999}); err == nil {
+		t.Fatal("unknown company must be rejected")
+	}
+	if _, err := trajectoryService.GetCareerDirections(ctx, scenarioUserID+2, dto.GetCareerDirectionsRequest{}); err == nil {
+		t.Fatal("empty company id for directions must be rejected")
+	}
+	if _, err := trajectoryService.GetRecommendedExamSets(ctx, dto.GetRecommendedExamSetsRequest{}); err == nil {
+		t.Fatal("empty career direction id must be rejected")
+	}
+	if _, err := profileService.SaveUserSubjects(ctx, scenarioUserID+2, dto.SaveUserSubjectsRequest{Subjects: []dto.UserSubjectInput{{ExamSubjectID: 0, Status: models.SubjectStatusPlanned}}}); err == nil {
+		t.Fatal("invalid EGE subject must be rejected")
+	}
+
+	var direction models.CareerDirection
+	if err := tx.First(&direction).Error; err != nil {
+		t.Fatalf("load demo direction: %v", err)
+	}
+	if _, err := trajectoryService.ConfirmGoal(ctx, scenarioUserID+2, dto.ConfirmGoalRequest{CareerDirectionID: direction.ID, TargetAdmissionYear: 2028}); err == nil {
+		t.Fatal("goal without a saved profile must be rejected")
+	}
+	if _, err := roadmapService.CreateRoadmap(ctx, scenarioUserID+2, dto.CreateRoadmapRequest{}); err == nil {
+		t.Fatal("roadmap without a goal must be rejected")
+	}
+}
+
+func scenarioServices(tx *gorm.DB) (services.ProfileService, services.TrajectoryService, services.RoadmapService) {
+	profileStore := repositories.NewGormProfileRepository(tx)
+	careerStore := repositories.NewGormCareerRepository(tx)
+	educationStore := repositories.NewGormEducationRepository(tx)
+	roadmapStore := repositories.NewGormRoadmapRepository(tx)
+	return services.NewProfileService(profileStore),
+		services.NewTrajectoryService(careerStore, educationStore, profileStore, roadmapStore),
+		services.NewRoadmapService(roadmapStore, careerStore)
+}
+
+func beginScenarioTransaction(t *testing.T, db *gorm.DB) *gorm.DB {
+	t.Helper()
+	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatalf("begin scenario transaction: %v", tx.Error)
+	}
+	t.Cleanup(func() { _ = tx.Rollback().Error })
+	return tx
+}
+
+func expectedTargetAdmissionYear(grade int16, now time.Time) int16 {
+	year := now.Year()
+	if now.Month() >= time.September {
+		year++
+	}
+	return int16(year + int(11-grade))
+}
+
+func openScenarioDatabase(t *testing.T) *gorm.DB {
+	t.Helper()
+	if os.Getenv("RUN_POSTGRES_INTEGRATION") != "1" {
+		t.Skip("set RUN_POSTGRES_INTEGRATION=1 and use the dedicated test database")
+	}
+	if os.Getenv("DB_NAME") != "employer_first_roadmap_test" {
+		t.Fatalf("refusing to run scenario tests against DB_NAME=%q; use employer_first_roadmap_test", os.Getenv("DB_NAME"))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	db, err := database.Open(ctx)
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	t.Cleanup(func() {
+		sqlDB, dbErr := db.DB()
+		if dbErr == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	if err := database.AutoMigrate(db); err != nil {
+		t.Fatalf("migrate test database: %v", err)
+	}
+	if err := database.SeedDemoData(db); err != nil {
+		t.Fatalf("seed test database: %v", err)
+	}
+	return db.Session(&gorm.Session{Logger: logger.Default.LogMode(logger.Silent)})
+}
+
+func companyByName(t *testing.T, service services.TrajectoryService, ctx context.Context, name string) dto.CompanyCatalogItemResponse {
+	t.Helper()
+	companies, err := service.FindCompanies(ctx, dto.FindCompaniesRequest{Limit: 20})
+	if err != nil {
+		t.Fatalf("find companies: %v", err)
+	}
+	for _, company := range companies {
+		if company.Name == name {
+			return company
+		}
+	}
+	t.Fatalf("company %q was not seeded", name)
+	return dto.CompanyCatalogItemResponse{}
+}
+
+func regionIDByName(t *testing.T, db *gorm.DB, name string) int64 {
+	t.Helper()
+	var region models.Region
+	if err := db.First(&region, "name = ?", name).Error; err != nil {
+		t.Fatalf("find region %q: %v", name, err)
+	}
+	return region.ID
+}
+
+func directionByName(t *testing.T, directions []dto.CareerDirectionResponse, name string) dto.CareerDirectionResponse {
+	t.Helper()
+	for _, direction := range directions {
+		if direction.Name == name {
+			return direction
+		}
+	}
+	t.Fatalf("direction %q was not returned", name)
+	return dto.CareerDirectionResponse{}
+}

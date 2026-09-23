@@ -8,10 +8,8 @@ import (
 )
 
 func CallBigSurvey(ctx maxbot.Context) error {
-
 	userID := ctx.Update().UserID
-
+	utils.ResetSmallSurvey(userID)
 	utils.UpdateUserStateStorage(userID, UserStateBigSurveyWaitingGrade)
-
-	return ctx.Send("1. В каком вы классе?")
+	return ctx.Send("1. В каком вы классе? (9, 10 или 11)")
 }

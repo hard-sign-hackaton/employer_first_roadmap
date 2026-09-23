@@ -73,9 +73,9 @@ func (s *trajectoryService) RecommendCompanies(ctx context.Context, userID int64
 		return nil, fmt.Errorf("list companies for recommendation: %w", err)
 	}
 
-	var selectedSubjectIDs []int64
+	var selectedSubjects []models.UserSubject
 	if profile.Grade == 11 {
-		selectedSubjectIDs, err = s.selectedSubjectIDs(ctx, userID)
+		selectedSubjects, err = s.selectedSubjects(ctx, userID)
 		if err != nil {
 			return nil, err
 		}
@@ -84,31 +84,27 @@ func (s *trajectoryService) RecommendCompanies(ctx context.Context, userID int64
 	result := make([]dto.RecommendedCompanyResponse, 0, len(companies))
 
 	for _, company := range companies {
-		score, reasons := bestDirectionScore(company.CareerDirections, userWeights)
-		compatible := true
-		if profile.Grade == 11 && len(selectedSubjectIDs) > 0 {
-			directionIDs, listErr := s.education.ListDirectionIDsAvailableForSubjects(
-				ctx,
-				company.ID,
-				selectedSubjectIDs,
-				targetAdmissionYear(profile.Grade, time.Now()),
-			)
-			if listErr != nil {
-				return nil, fmt.Errorf("check company %d exam compatibility: %w", company.ID, listErr)
+		directions := company.CareerDirections
+		if profile.Grade == 11 && len(selectedSubjects) > 0 {
+			compatibleDirections, compatibilityErr := s.filterCompatibleDirections(ctx, directions, selectedSubjects)
+			if compatibilityErr != nil {
+				return nil, fmt.Errorf("check company %d exam compatibility: %w", company.ID, compatibilityErr)
 			}
-			compatible = len(directionIDs) > 0
-			if compatible {
-				reasons = append(reasons, "Есть направление с выбранным набором ЕГЭ")
-			} else {
-				reasons = append(reasons, "Нет направления с выбранным набором ЕГЭ")
+			if len(compatibleDirections) == 0 {
+				continue
 			}
+			directions = compatibleDirections
+		}
+		score, reasons := bestDirectionScore(directions, userWeights)
+		if profile.Grade == 11 && len(selectedSubjects) > 0 {
+			reasons = append(reasons, "Есть направление, совместимое с выбранными ЕГЭ")
 		}
 
 		result = append(result, dto.RecommendedCompanyResponse{
 			CompanyCatalogItemResponse: companyResponse(company),
 			Score:                      score,
 			Reasons:                    reasons,
-			IsCompatible:               compatible,
+			IsCompatible:               true,
 		})
 	}
 
@@ -161,21 +157,16 @@ func (s *trajectoryService) GetCareerDirections(ctx context.Context, userID int6
 	}
 
 	if profile.Grade == 11 {
-		selectedSubjectIDs, subjectErr := s.selectedSubjectIDs(ctx, userID)
+		selectedSubjects, subjectErr := s.selectedSubjects(ctx, userID)
 		if subjectErr != nil {
 			return nil, subjectErr
 		}
-		if len(selectedSubjectIDs) > 0 {
-			availableIDs, listErr := s.education.ListDirectionIDsAvailableForSubjects(
-				ctx,
-				request.CompanyID,
-				selectedSubjectIDs,
-				targetAdmissionYear(profile.Grade, time.Now()),
-			)
-			if listErr != nil {
-				return nil, fmt.Errorf("list directions available for selected exams: %w", listErr)
+		if len(selectedSubjects) > 0 {
+			compatibleDirections, compatibilityErr := s.filterCompatibleDirections(ctx, directions, selectedSubjects)
+			if compatibilityErr != nil {
+				return nil, fmt.Errorf("list directions available for selected exams: %w", compatibilityErr)
 			}
-			directions = filterDirections(directions, availableIDs)
+			directions = compatibleDirections
 		}
 	}
 
@@ -209,14 +200,10 @@ func (s *trajectoryService) GetRecommendedExamSets(ctx context.Context, request 
 	if request.CareerDirectionID <= 0 {
 		return nil, fmt.Errorf("career_direction_id must be positive")
 	}
-	if request.AdmissionYear < 2020 || request.AdmissionYear > 2100 {
-		return nil, fmt.Errorf("admission_year must be between 2020 and 2100")
-	}
-
 	if _, err := s.careers.FindCareerDirectionByID(ctx, request.CareerDirectionID); err != nil {
 		return nil, fmt.Errorf("find career direction: %w", err)
 	}
-	combinations, err := s.education.ListExamCombinationsForDirection(ctx, request.CareerDirectionID, request.AdmissionYear)
+	combinations, err := s.education.ListLatestExamCombinationsForDirection(ctx, request.CareerDirectionID, int16(time.Now().Year()))
 	if err != nil {
 		return nil, fmt.Errorf("list exam combinations: %w", err)
 	}
@@ -225,6 +212,7 @@ func (s *trajectoryService) GetRecommendedExamSets(ctx context.Context, request 
 		ids         []int64
 		subjects    []dto.ExamSubjectResponse
 		description string
+		sourceYear  int16
 	}
 	uniqueSets := make(map[string]examSet)
 	for _, combination := range combinations {
@@ -244,6 +232,7 @@ func (s *trajectoryService) GetRecommendedExamSets(ctx context.Context, request 
 			ids:         ids,
 			subjects:    subjects,
 			description: examSetDescription(combination),
+			sourceYear:  combination.AdmissionYear,
 		}
 	}
 
@@ -260,6 +249,7 @@ func (s *trajectoryService) GetRecommendedExamSets(ctx context.Context, request 
 			ExamSubjectIDs: set.ids,
 			Subjects:       set.subjects,
 			Description:    set.description,
+			SourceYear:     set.sourceYear,
 		})
 	}
 	return result, nil
@@ -310,20 +300,61 @@ func (s *trajectoryService) ConfirmGoal(ctx context.Context, userID int64, reque
 	}, nil
 }
 
-func (s *trajectoryService) selectedSubjectIDs(ctx context.Context, userID int64) ([]int64, error) {
+func (s *trajectoryService) selectedSubjects(ctx context.Context, userID int64) ([]models.UserSubject, error) {
 	subjects, err := s.profiles.ListUserSubjects(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("list user subjects: %w", err)
+		return nil, fmt.Errorf("list selected user subjects: %w", err)
 	}
 
-	ids := make([]int64, 0, len(subjects))
+	selected := make([]models.UserSubject, 0, len(subjects))
 	for _, subject := range subjects {
 		if subject.Status == models.SubjectStatusSelected || subject.Status == models.SubjectStatusPassed {
-			ids = append(ids, subject.ExamSubjectID)
+			selected = append(selected, subject)
 		}
 	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	return ids, nil
+	sort.Slice(selected, func(i, j int) bool { return selected[i].ExamSubjectID < selected[j].ExamSubjectID })
+	return selected, nil
+}
+
+func (s *trajectoryService) filterCompatibleDirections(ctx context.Context, directions []models.CareerDirection, subjects []models.UserSubject) ([]models.CareerDirection, error) {
+	result := make([]models.CareerDirection, 0, len(directions))
+	for _, direction := range directions {
+		combinations, err := s.education.ListLatestExamCombinationsForDirection(ctx, direction.ID, int16(time.Now().Year()))
+		if err != nil {
+			return nil, err
+		}
+		for _, combination := range combinations {
+			if examCombinationMatches(combination, subjects) {
+				result = append(result, direction)
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
+func examCombinationMatches(combination models.ExamCombination, subjects []models.UserSubject) bool {
+	selected := make(map[int64]models.UserSubject, len(subjects))
+	for _, subject := range subjects {
+		selected[subject.ExamSubjectID] = subject
+	}
+	for _, item := range combination.Items {
+		subject, exists := selected[item.ExamSubjectID]
+		if !exists {
+			return false
+		}
+		if item.MinScore == nil {
+			continue
+		}
+		score := subject.ExpectedScore
+		if subject.ActualScore != nil {
+			score = subject.ActualScore
+		}
+		if score != nil && *score < *item.MinScore {
+			return false
+		}
+	}
+	return true
 }
 
 func companyResponse(company models.Company) dto.CompanyCatalogItemResponse {

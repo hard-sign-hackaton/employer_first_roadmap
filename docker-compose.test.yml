@@ -1,0 +1,31 @@
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: employer_first_roadmap_test
+      POSTGRES_USER: efr_test
+      POSTGRES_PASSWORD: efr_test_password
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
+  tests:
+    image: golang:1.26.5
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      RUN_POSTGRES_INTEGRATION: "1"
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: employer_first_roadmap_test
+      DB_USER: efr_test
+      DB_PASSWORD: efr_test_password
+      DB_SSLMODE: disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: go test ./integration -v
+
+volumes:
+  postgres_test_data:

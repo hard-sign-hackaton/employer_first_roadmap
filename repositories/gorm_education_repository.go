@@ -20,11 +20,15 @@ func NewGormEducationRepository(db *gorm.DB) *GormEducationRepository {
 	return &GormEducationRepository{db: db}
 }
 
-func (r *GormEducationRepository) ListExamCombinationsForDirection(ctx context.Context, careerDirectionID int64, admissionYear int16) ([]models.ExamCombination, error) {
+func (r *GormEducationRepository) ListLatestExamCombinationsForDirection(ctx context.Context, careerDirectionID int64, asOfYear int16) ([]models.ExamCombination, error) {
 	var combinations []models.ExamCombination
+	latestYear := r.db.Model(&models.ExamCombination{}).
+		Select("MAX(exam_combinations.admission_year)").
+		Joins("JOIN career_direction_education_programs AS cdep ON cdep.education_program_id = exam_combinations.education_program_id").
+		Where("cdep.career_direction_id = ? AND exam_combinations.admission_year <= ?", careerDirectionID, asOfYear)
 	err := r.db.WithContext(ctx).
 		Joins("JOIN career_direction_education_programs AS cdep ON cdep.education_program_id = exam_combinations.education_program_id").
-		Where("cdep.career_direction_id = ? AND exam_combinations.admission_year = ?", careerDirectionID, admissionYear).
+		Where("cdep.career_direction_id = ? AND exam_combinations.admission_year = (?)", careerDirectionID, latestYear).
 		Preload("EducationProgram.University.Region").
 		Preload("Items.ExamSubject").
 		Order("exam_combinations.id ASC").

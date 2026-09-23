@@ -14,6 +14,6 @@ require (
 )
 
 require (
-	github.com/max-messenger/max-bot-api-client-go/v2 v2.4.0 // indirect
+	github.com/max-messenger/max-bot-api-client-go/v2 v2.4.0
 	gorm.io/gorm v1.31.2
 )

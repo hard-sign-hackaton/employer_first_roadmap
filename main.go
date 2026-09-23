@@ -26,8 +26,14 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Определение обработчиков комманд
-	bot.Handle("/demo", handlers.DemoHandler)
+	// Обработка событий
+	bot.Handle(maxbot.OnBotStarted, handlers.DemoMenuHandler)
+	bot.Handle(maxbot.OnMessageCreated, handlers.DemoMessageListenerHandler)
+
+	// Обработка коллбеков
+	bot.HandleCallback("/menu", handlers.DemoMenuHandler)
+	bot.HandleCallback("/demo", handlers.DemoRequestHandler)
+	bot.HandleCallback("/form", handlers.DemoFormHandler)
 
 	// Запуск бота и начало мониторинга событий
 	log.Println("Бот запускается...")

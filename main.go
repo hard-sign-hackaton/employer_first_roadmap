@@ -24,10 +24,14 @@ func main() {
 	}
 
 	// Обработка событий
-	bot.Handle(maxbot.OnBotStarted, handlers.DemoMenuHandler)
-	bot.Handle(maxbot.OnMessageCreated, handlers.DemoMessageListenerHandler)
+	bot.Handle(maxbot.OnBotStarted, handlers.CreateUser)
+	bot.Handle(maxbot.OnMessageCreated, handlers.GlobalMessageListener)
 
 	// Обработка коллбеков
+	bot.HandleCallback("/small_survey", handlers.CallSmallSurvey)
+	bot.HandleCallback("/relocate_yes", handlers.SmallSurveyRelocationConfirm)
+	bot.HandleCallback("/relocate_no", handlers.SmallSurveyRelocationDeny)
+
 	bot.HandleCallback("/menu", handlers.DemoMenuHandler)
 	bot.HandleCallback("/demo", handlers.DemoRequestHandler)
 	bot.HandleCallback("/form", handlers.DemoFormHandler)

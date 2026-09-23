@@ -1,5 +1,31 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-employer_first_roadmap}
+      POSTGRES_USER: ${POSTGRES_USER:-efr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-efr_local_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   efr_bot:
     build: ./
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${POSTGRES_DB:-employer_first_roadmap}
+      - DB_USER=${POSTGRES_USER:-efr}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-efr_local_password}
+      - DB_SSLMODE=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

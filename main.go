@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
+	"efr_bot/database"
 	"efr_bot/handlers"
 	"log"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/max-messenger/maxbot"
@@ -14,6 +17,24 @@ func init() {
 }
 
 func main() {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	db, err := database.Open(ctx)
+	if err != nil {
+		log.Fatalf("Не удалось подключиться к базе данных: %v", err)
+	}
+
+	if err := database.AutoMigrate(db); err != nil {
+		log.Fatalf("Не удалось применить миграции: %v", err)
+	}
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatalf("Не удалось получить подключение к базе данных: %v", err)
+	}
+	defer sqlDB.Close()
+
 	// Получение токена бота из переменных окружения
 	access_token := os.Getenv("BOT_TOKEN")
 

@@ -74,6 +74,8 @@ func main() {
 	bot.HandleCallback("/big_survey", handlers.CallBigSurvey)
 	bot.HandleCallback("/subject_toggle", handlers.SubjectToggle)
 	bot.HandleCallback("/subjects_done", handlers.SubjectsDone)
+	bot.HandleCallback("/exam_subject_toggle", handlers.ExamSubjectToggle)
+	bot.HandleCallback("/exam_subjects_done", handlers.ExamSubjectsDone)
 
 	// Старые кнопки demo-меню тоже возвращают пользователя в актуальный сценарий опроса.
 	bot.HandleCallback("/menu", handlers.CallMenu)

@@ -5,7 +5,6 @@ import (
 	"efr_bot/dto"
 	"efr_bot/models"
 	"efr_bot/utils"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -28,14 +27,22 @@ func showExamSubjectSelection(ctx maxbot.Context, nextState models.UserState) er
 	}
 	s.AvailableExamIDs = nil
 	s.AvailableExamNames = nil
-	kb := model.NewKeyboard()
-	for index, subject := range subjects {
+	s.SelectedExamIDs = nil
+	s.SelectedExamNames = nil
+	s.SelectedExamScores = nil
+	for _, subject := range subjects {
 		s.AvailableExamIDs = append(s.AvailableExamIDs, subject.ID)
 		s.AvailableExamNames = append(s.AvailableExamNames, subject.Name)
-		kb.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, subject.Name))
 	}
 	utils.UpdateUserStateStorage(userID, nextState)
-	return ctx.Send("Выберите предметы ЕГЭ номерами через запятую, например: 1,3,5.", maxbot.WithKeyboard(kb))
+	text, keyboard := examSubjectsQuestion(s)
+	return ctx.Send(text, maxbot.WithKeyboard(keyboard))
+}
+
+func showExamScorePrompt(ctx maxbot.Context) error {
+	keyboard := model.NewKeyboard()
+	keyboard.AddRow().AddMessage("Пропустить")
+	return ctx.Send("Если знаете ожидаемые баллы, укажите их в формате «1:80,2:75» — номера относятся к выбранным предметам. Или нажмите «Пропустить».", maxbot.WithKeyboard(keyboard))
 }
 
 func saveSelectedExamSubjects(ctx maxbot.Context) error {
@@ -53,21 +60,6 @@ func saveSelectedExamSubjects(ctx maxbot.Context) error {
 		return err
 	}
 	return nil
-}
-
-func chooseExamSubjects(s *utils.SmallSurveyData, text string) bool {
-	indexes, ok := multipleChoices(text, len(s.AvailableExamIDs))
-	if !ok {
-		return false
-	}
-	s.SelectedExamIDs = make([]int64, 0, len(indexes))
-	s.SelectedExamNames = make([]string, 0, len(indexes))
-	for _, index := range indexes {
-		s.SelectedExamIDs = append(s.SelectedExamIDs, s.AvailableExamIDs[index])
-		s.SelectedExamNames = append(s.SelectedExamNames, s.AvailableExamNames[index])
-	}
-	s.SelectedExamScores = make(map[int64]*int16)
-	return true
 }
 
 func saveExpectedScores(s *utils.SmallSurveyData, text string) bool {
@@ -108,21 +100,4 @@ func showGoalConfirmation(ctx maxbot.Context, state models.UserState) error {
 			"Подтвердить цель?",
 		maxbot.WithKeyboard(keyboard),
 	)
-}
-
-func multipleChoices(text string, length int) ([]int, bool) {
-	seen := make(map[int]struct{})
-	result := make([]int, 0)
-	for _, part := range strings.Split(text, ",") {
-		value, err := strconv.Atoi(strings.TrimSpace(strings.Split(part, ".")[0]))
-		if err != nil || value < 1 || value > length {
-			return nil, false
-		}
-		index := value - 1
-		if _, exists := seen[index]; !exists {
-			seen[index] = struct{}{}
-			result = append(result, index)
-		}
-	}
-	return result, len(result) > 0
 }

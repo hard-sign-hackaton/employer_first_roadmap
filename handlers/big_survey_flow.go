@@ -15,8 +15,10 @@ import (
 )
 
 const (
-	subjectToggleCallback = "/subject_toggle"
-	subjectsDoneCallback  = "/subjects_done"
+	subjectToggleCallback     = "/subject_toggle"
+	subjectsDoneCallback      = "/subjects_done"
+	examSubjectToggleCallback = "/exam_subject_toggle"
+	examSubjectsDoneCallback  = "/exam_subjects_done"
 )
 
 func handleBigSurveyMessage(ctx maxbot.Context) error {
@@ -64,13 +66,7 @@ func handleBigSurveyMessage(ctx maxbot.Context) error {
 		}
 		return ctx.Send("Выберите «Да» или «Нет».")
 	case models.UserStateBigSurveyWaitingExamSubject:
-		if !chooseExamSubjects(s, text) {
-			return ctx.Send("Введите номера выбранных ЕГЭ через запятую, например: 1,3,5.")
-		}
-		utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingExamScore)
-		keyboard := model.NewKeyboard()
-		keyboard.AddRow().AddMessage("Пропустить")
-		return ctx.Send("Если знаете ожидаемые баллы, укажите их в формате «1:80,2:75». Или нажмите «Пропустить».", maxbot.WithKeyboard(keyboard))
+		return ctx.Send("Выберите предметы ЕГЭ кнопками ниже и нажмите «Готово».")
 	case models.UserStateBigSurveyWaitingExamScore:
 		if !saveExpectedScores(s, text) {
 			return ctx.Send("Неверный формат. Используйте «1:80,2:75» или «Пропустить».")
@@ -309,6 +305,103 @@ func SubjectsDone(ctx maxbot.Context) error {
 	}
 	_ = ctx.Answer(fmt.Sprintf("✓ Выбрано предметов: %d", len(s.SelectedSchoolSubjectIDs)))
 	return showRecommendedCompanies(ctx)
+}
+
+func examSubjectsQuestion(s *utils.SmallSurveyData) (string, *model.Keyboard) {
+	keyboard := model.NewKeyboard()
+	for index, subjectID := range s.AvailableExamIDs {
+		label := fmt.Sprintf("%d. %s", index+1, s.AvailableExamNames[index])
+		if isExamSubjectSelected(s, subjectID) {
+			label = "✓ " + label
+		}
+		keyboard.AddRow().AddCallBack(label, fmt.Sprintf("%s:%d", examSubjectToggleCallback, subjectID))
+	}
+	keyboard.AddRow().AddCallBack("Готово", examSubjectsDoneCallback)
+
+	text := "Какие предметы ЕГЭ вы уже выбрали? Нажимайте на предметы — выбранные помечаются галочкой. Когда закончите, нажмите «Готово»."
+	if len(s.SelectedExamNames) > 0 {
+		text += "\n\nВыбрано: " + strings.Join(s.SelectedExamNames, ", ")
+	}
+	return text, keyboard
+}
+
+func isExamSubjectSelected(s *utils.SmallSurveyData, subjectID int64) bool {
+	return slices.Contains(s.SelectedExamIDs, subjectID)
+}
+
+func toggleExamSubject(s *utils.SmallSurveyData, subjectID int64) {
+	for i, id := range s.SelectedExamIDs {
+		if id == subjectID {
+			s.SelectedExamIDs = append(s.SelectedExamIDs[:i], s.SelectedExamIDs[i+1:]...)
+			s.SelectedExamNames = append(s.SelectedExamNames[:i], s.SelectedExamNames[i+1:]...)
+			return
+		}
+	}
+	name := ""
+	for i, id := range s.AvailableExamIDs {
+		if id == subjectID {
+			name = s.AvailableExamNames[i]
+			break
+		}
+	}
+	s.SelectedExamIDs = append(s.SelectedExamIDs, subjectID)
+	s.SelectedExamNames = append(s.SelectedExamNames, name)
+}
+
+func ExamSubjectToggle(ctx maxbot.Context) error {
+	id := ctx.Update().UserID
+	state := utils.GetUserState(id)
+	if state != models.UserStateSmallSurveyWaitingExamSubject && state != models.UserStateBigSurveyWaitingExamSubject {
+		return ctx.Answer("Этот выбор уже завершён. Начните заново командой /start.")
+	}
+	payload := ctx.Update().GetCallbackPayload()
+	subjectID, err := strconv.ParseInt(payload.Param, 10, 64)
+	if err != nil {
+		return nil
+	}
+	s := utils.GetSmallSurvey(id)
+	subjectName := ""
+	found := false
+	for i, availableID := range s.AvailableExamIDs {
+		if availableID == subjectID {
+			subjectName = s.AvailableExamNames[i]
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil
+	}
+	toggleExamSubject(s, subjectID)
+	if isExamSubjectSelected(s, subjectID) {
+		_ = ctx.Answer("✓ Выбрано: " + subjectName)
+	} else {
+		_ = ctx.Answer("Снято: " + subjectName)
+	}
+	text, keyboard := examSubjectsQuestion(s)
+	return ctx.Edit(text, maxbot.WithKeyboard(keyboard))
+}
+
+func ExamSubjectsDone(ctx maxbot.Context) error {
+	id := ctx.Update().UserID
+	state := utils.GetUserState(id)
+	var nextState models.UserState
+	switch state {
+	case models.UserStateSmallSurveyWaitingExamSubject:
+		nextState = models.UserStateSmallSurveyWaitingExamScore
+	case models.UserStateBigSurveyWaitingExamSubject:
+		nextState = models.UserStateBigSurveyWaitingExamScore
+	default:
+		return ctx.Answer("Этот выбор уже завершён. Начните заново командой /start.")
+	}
+	s := utils.GetSmallSurvey(id)
+	if len(s.SelectedExamIDs) == 0 {
+		return ctx.Answer("Выберите хотя бы один предмет.")
+	}
+	s.SelectedExamScores = make(map[int64]*int16)
+	utils.UpdateUserStateStorage(id, nextState)
+	_ = ctx.Answer(fmt.Sprintf("✓ Выбрано предметов: %d", len(s.SelectedExamIDs)))
+	return showExamScorePrompt(ctx)
 }
 
 func saveFullSurveyInterests(ctx maxbot.Context) error {

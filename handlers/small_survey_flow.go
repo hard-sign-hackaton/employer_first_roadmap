@@ -83,13 +83,7 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 		}
 		return ctx.Send("Выберите «Да» или «Нет».")
 	case models.UserStateSmallSurveyWaitingExamSubject:
-		if !chooseExamSubjects(s, text) {
-			return ctx.Send("Выберите предмет:")
-		}
-		utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingExamScore)
-		keyboard := model.NewKeyboard()
-		keyboard.AddRow().AddMessage("Пропустить")
-		return ctx.Send("Если знаете ожидаемые баллы, укажите их в формате «1:80,2:75» — номера относятся к выбранным предметам. Или нажмите «Пропустить».", maxbot.WithKeyboard(keyboard))
+		return ctx.Send("Выберите предметы ЕГЭ кнопками ниже и нажмите «Готово».")
 	case models.UserStateSmallSurveyWaitingExamScore:
 		if !saveExpectedScores(s, text) {
 			return ctx.Send("Неверный формат. Используйте «1:80,2:75» или «Пропустить».")

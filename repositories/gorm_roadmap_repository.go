@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"efr_bot/models"
@@ -106,6 +107,52 @@ func (r *GormRoadmapRepository) UpdateRoadmapStepStatus(ctx context.Context, roa
 		Where("id = ? AND roadmap_id = ?", stepID, roadmapID).
 		First(&step).Error
 	return step, err
+}
+
+func (r *GormRoadmapRepository) CompleteRoadmapStep(ctx context.Context, roadmapID, stepID int64) (models.RoadmapStep, error) {
+	completedAt := time.Now().UTC()
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var currentStep models.RoadmapStep
+		if err := tx.
+			Where("id = ? AND roadmap_id = ? AND status = ?", stepID, roadmapID, models.RoadmapStepStatusActive).
+			First(&currentStep).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&currentStep).Updates(map[string]any{
+			"status":       models.RoadmapStepStatusCompleted,
+			"completed_at": completedAt,
+		}).Error; err != nil {
+			return err
+		}
+
+		var nextStep models.RoadmapStep
+		err := tx.
+			Where("roadmap_id = ? AND status = ? AND order_no > ?", roadmapID, models.RoadmapStepStatusPending, currentStep.OrderNo).
+			Order("order_no ASC").
+			First(&nextStep).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return tx.Model(&models.Roadmap{}).
+				Where("id = ?", roadmapID).
+				Updates(map[string]any{
+					"status":       models.RoadmapStatusCompleted,
+					"completed_at": completedAt,
+				}).Error
+		}
+		if err != nil {
+			return err
+		}
+		return tx.Model(&nextStep).Update("status", models.RoadmapStepStatusActive).Error
+	})
+	if err != nil {
+		return models.RoadmapStep{}, err
+	}
+
+	var completedStep models.RoadmapStep
+	err = r.db.WithContext(ctx).
+		Preload("CompanyOpportunity").
+		Where("id = ? AND roadmap_id = ?", stepID, roadmapID).
+		First(&completedStep).Error
+	return completedStep, err
 }
 
 func (r *GormRoadmapRepository) ReplaceUncompletedSteps(ctx context.Context, roadmapID int64, steps []models.RoadmapStep) ([]models.RoadmapStep, error) {

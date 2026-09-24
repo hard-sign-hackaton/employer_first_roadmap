@@ -76,7 +76,13 @@ func (s *roadmapService) UpdateRoadmapStep(ctx context.Context, userID int64, st
 		return dto.RoadmapStepResponse{}, fmt.Errorf("find roadmap: %w", err)
 	}
 
-	updatedStep, err := s.roadmaps.UpdateRoadmapStepStatus(ctx, step.RoadmapID, step.StepID, request.Status)
+	var updatedStep models.RoadmapStep
+	var err error
+	if request.Status == models.RoadmapStepStatusCompleted {
+		updatedStep, err = s.roadmaps.CompleteRoadmapStep(ctx, step.RoadmapID, step.StepID)
+	} else {
+		updatedStep, err = s.roadmaps.UpdateRoadmapStepStatus(ctx, step.RoadmapID, step.StepID, request.Status)
+	}
 	if err != nil {
 		return dto.RoadmapStepResponse{}, fmt.Errorf("update roadmap step: %w", err)
 	}

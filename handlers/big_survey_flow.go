@@ -166,7 +166,7 @@ func showBigRegions(ctx maxbot.Context) error {
 		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, region.Name))
 	}
 	utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingRegion)
-	return ctx.Send("2. Выберите регион номером:", maxbot.WithKeyboard(keyboard))
+	return ctx.Send("2. Выберите регион:", maxbot.WithKeyboard(keyboard))
 }
 
 func showFullSurveyActivities(ctx maxbot.Context) error {
@@ -218,7 +218,7 @@ func showFullSurveySchoolSubjects(ctx maxbot.Context) error {
 		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, subject.Name))
 	}
 	utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingSubjects)
-	return ctx.Send("Какие школьные предметы вам интересны? Выберите номера через запятую:", maxbot.WithKeyboard(keyboard))
+	return ctx.Send("Какие школьные предметы вам интересны?:", maxbot.WithKeyboard(keyboard))
 }
 
 func saveFullSurveyInterests(ctx maxbot.Context) error {
@@ -301,7 +301,7 @@ func showRecommendedCompanies(ctx maxbot.Context) error {
 		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, company.Name))
 	}
 	utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingCompany)
-	return ctx.Send("Подходящие компании подобраны по вашим интересам:\n"+strings.Join(lines, "\n")+"\n\nВыберите компанию номером:", maxbot.WithKeyboard(keyboard))
+	return ctx.Send("Подходящие компании подобраны по вашим интересам:\n"+strings.Join(lines, "\n")+"\n\nВыберите компанию:", maxbot.WithKeyboard(keyboard))
 }
 
 func showBigDirections(ctx maxbot.Context) error {

@@ -13,6 +13,12 @@ import (
 	"github.com/max-messenger/maxbot"
 )
 
+func gradeKeyboard() *model.Keyboard {
+	keyboard := model.NewKeyboard()
+	keyboard.AddRow().AddMessage("9").AddMessage("10").AddMessage("11")
+	return keyboard
+}
+
 func showExamSubjectSelection(ctx maxbot.Context, nextState models.UserState) error {
 	userID := ctx.Update().UserID
 	s := utils.GetSmallSurvey(userID)

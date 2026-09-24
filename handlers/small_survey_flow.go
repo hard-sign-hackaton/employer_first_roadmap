@@ -21,7 +21,7 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 	case models.UserStateSmallSurveyWaitingCompanyName:
 		n, ok := choice(text, len(s.CompanyIDs))
 		if !ok {
-			return ctx.Send("Выберите номер компании с клавиатуры.")
+			return ctx.Send("Выберите компанию:")
 		}
 		s.CompanyID = s.CompanyIDs[n]
 		company, err := app.Trajectory.SelectCompany(context.Background(), id, dto.SelectCompanyRequest{CompanyID: s.CompanyID})
@@ -30,7 +30,7 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 		}
 		s.CompanyName = company.Name
 		utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingGrade)
-		return ctx.Send("Выбрана компания: " + company.Name + "\n2. В каком вы классе? (9, 10 или 11)")
+		return ctx.Send("Выбрана компания: "+company.Name+"\n2. Выберите класс:", maxbot.WithKeyboard(gradeKeyboard()))
 	case models.UserStateSmallSurveyWaitingGrade:
 		grade, err := strconv.ParseInt(text, 10, 16)
 		if err != nil || grade < 9 || grade > 11 {
@@ -48,11 +48,11 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 			kb.AddRow().AddMessage(fmt.Sprintf("%d. %s", i+1, r.Name))
 		}
 		utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingRegion)
-		return ctx.Send("3. Выберите регион номером:", maxbot.WithKeyboard(kb))
+		return ctx.Send("3. Выберите регион:", maxbot.WithKeyboard(kb))
 	case models.UserStateSmallSurveyWaitingRegion:
 		n, ok := choice(text, len(s.RegionIDs))
 		if !ok {
-			return ctx.Send("Выберите номер региона с клавиатуры.")
+			return ctx.Send("Выберите регион из доступных:")
 		}
 		s.RegionID = s.RegionIDs[n]
 		utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingRelocation)
@@ -84,7 +84,7 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 		return ctx.Send("Выберите «Да» или «Нет».")
 	case models.UserStateSmallSurveyWaitingExamSubject:
 		if !chooseExamSubjects(s, text) {
-			return ctx.Send("Введите номера выбранных ЕГЭ через запятую, например: 1,3,5.")
+			return ctx.Send("Выберите предмет:")
 		}
 		utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingExamScore)
 		keyboard := model.NewKeyboard()
@@ -101,7 +101,7 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 	case models.UserStateSmallSurveyWaitingDirection:
 		n, ok := choice(text, len(s.DirectionIDs))
 		if !ok {
-			return ctx.Send("Выберите номер направления.")
+			return ctx.Send("Выберите направление:")
 		}
 		s.CareerDirectionID = s.DirectionIDs[n]
 		s.CareerDirectionName = s.DirectionNames[n]
@@ -132,7 +132,7 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 	case models.UserStateSmallSurveyWaitingExamSet:
 		n, ok := choice(text, len(s.ExamSets))
 		if !ok {
-			return ctx.Send("Выберите номер набора ЕГЭ.")
+			return ctx.Send("Выберите набор ЕГЭ.")
 		}
 		inputs := []dto.UserSubjectInput{}
 		for _, subjectID := range s.ExamSets[n] {

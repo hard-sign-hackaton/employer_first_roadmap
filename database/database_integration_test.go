@@ -72,14 +72,14 @@ func TestSeedDemoDataPostgres(t *testing.T) {
 	}
 
 	for model, expected := range map[any]int64{
-		&models.Region{}:           3,
-		&models.ExamSubject{}:      8,
-		&models.InterestTag{}:      8,
-		&models.Company{}:          3,
-		&models.CareerDirection{}:  5,
-		&models.University{}:       4,
-		&models.EducationProgram{}: 5,
-		&models.RoadmapTemplate{}:  5,
+		&models.Region{}:           6,
+		&models.ExamSubject{}:      11,
+		&models.InterestTag{}:      17,
+		&models.Company{}:          7,
+		&models.CareerDirection{}:  23,
+		&models.University{}:       10,
+		&models.EducationProgram{}: 18,
+		&models.RoadmapTemplate{}:  23,
 	} {
 		var count int64
 		if err := db.Model(model).Count(&count).Error; err != nil {

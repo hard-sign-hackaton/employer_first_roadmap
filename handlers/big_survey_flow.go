@@ -180,11 +180,17 @@ func showFullSurveyActivities(ctx maxbot.Context) error {
 	s.ActivityTagNames = nil
 	keyboard := model.NewKeyboard()
 	actionTags := map[string]bool{
-		"Программирование": true,
-		"Аналитика":        true,
-		"Инженерия":        true,
-		"Коммуникация":     true,
-		"Исследования":     true,
+		"Программирование":         true,
+		"Аналитика":                true,
+		"Инженерия":                true,
+		"Коммуникация":             true,
+		"Исследования":             true,
+		"Управление продуктом":     true,
+		"Техническая документация": true,
+		"Производство":             true,
+		"Медицина":                 true,
+		"Экология":                 true,
+		"Логистика":                true,
 	}
 	for _, tag := range tags {
 		if !actionTags[tag.Name] {
@@ -265,8 +271,14 @@ func schoolSubjectTag(subject string) string {
 		return "Коммуникация"
 	case "Английский язык":
 		return "Английский язык"
-	case "Химия", "Биология":
-		return "Исследования"
+	case "Химия":
+		return "Химия"
+	case "Биология":
+		return "Биология"
+	case "География":
+		return "Экология"
+	case "История", "Литература":
+		return "Коммуникация"
 	default:
 		return ""
 	}

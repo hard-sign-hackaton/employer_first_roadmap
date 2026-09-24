@@ -15,6 +15,7 @@ type RoadmapStore interface {
 	FindActiveTemplateForDirection(ctx context.Context, careerDirectionID int64) (models.RoadmapTemplate, error)
 	CreateRoadmapWithSteps(ctx context.Context, roadmap models.Roadmap, steps []models.RoadmapStep) (models.Roadmap, error)
 	UpdateRoadmapStepStatus(ctx context.Context, roadmapID, stepID int64, status string) (models.RoadmapStep, error)
+	CompleteRoadmapStep(ctx context.Context, roadmapID, stepID int64) (models.RoadmapStep, error)
 	ReplaceUncompletedSteps(ctx context.Context, roadmapID int64, steps []models.RoadmapStep) ([]models.RoadmapStep, error)
 	ReplaceAdmissionApplications(ctx context.Context, roadmapID int64, applications []models.RoadmapAdmissionApplication) ([]models.RoadmapAdmissionApplication, error)
 	ListAdmissionApplications(ctx context.Context, roadmapID int64) ([]models.RoadmapAdmissionApplication, error)

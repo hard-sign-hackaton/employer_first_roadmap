@@ -429,6 +429,7 @@ func showBigRecommendedExamSets(ctx maxbot.Context) error {
 	s.ExamSets = nil
 	s.ExamSetNames = nil
 	keyboard := model.NewKeyboard()
+	lines := make([]string, 0, len(sets))
 	for index, set := range sets {
 		s.ExamSets = append(s.ExamSets, set.ExamSubjectIDs)
 		names := make([]string, 0, len(set.Subjects))
@@ -436,10 +437,14 @@ func showBigRecommendedExamSets(ctx maxbot.Context) error {
 			names = append(names, subject.Name)
 		}
 		s.ExamSetNames = append(s.ExamSetNames, names)
-		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, strings.Join(names, ", ")))
+		lines = append(lines, fmt.Sprintf("%d. %s", index+1, strings.Join(names, ", ")))
+		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. Набор %d", index+1, index+1))
 	}
 	utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingExamSet)
-	return ctx.Send(fmt.Sprintf("Выберите рекомендуемый набор ЕГЭ. Используем последние доступные правила приёма — %d год:", sets[0].SourceYear), maxbot.WithKeyboard(keyboard))
+	return ctx.Send(
+		fmt.Sprintf("Выберите рекомендуемый набор ЕГЭ. Используем последние доступные правила приёма — %d год:\n\n%s\n\nВведите номер набора или нажмите кнопку.", sets[0].SourceYear, strings.Join(lines, "\n")),
+		maxbot.WithKeyboard(keyboard),
+	)
 }
 
 func sendRoadmap(ctx maxbot.Context, roadmap dto.RoadmapResponse) error {

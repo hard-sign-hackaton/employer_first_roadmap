@@ -118,6 +118,7 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 		kb := model.NewKeyboard()
 		s.ExamSets = nil
 		s.ExamSetNames = nil
+		lines := make([]string, 0, len(sets))
 		for i, set := range sets {
 			s.ExamSets = append(s.ExamSets, set.ExamSubjectIDs)
 			names := []string{}
@@ -125,10 +126,11 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 				names = append(names, v.Name)
 			}
 			s.ExamSetNames = append(s.ExamSetNames, names)
-			kb.AddRow().AddMessage(fmt.Sprintf("%d. %s", i+1, strings.Join(names, ", ")))
+			lines = append(lines, fmt.Sprintf("%d. %s", i+1, strings.Join(names, ", ")))
+			kb.AddRow().AddMessage(fmt.Sprintf("%d. Набор %d", i+1, i+1))
 		}
 		utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingExamSet)
-		return ctx.Send(fmt.Sprintf("Выберите рекомендуемый набор ЕГЭ. Используем последние доступные правила приёма — %d год:", sets[0].SourceYear), maxbot.WithKeyboard(kb))
+		return ctx.Send(fmt.Sprintf("Выберите рекомендуемый набор ЕГЭ. Используем последние доступные правила приёма — %d год:\n\n%s\n\nВведите номер набора или нажмите кнопку.", sets[0].SourceYear, strings.Join(lines, "\n")), maxbot.WithKeyboard(kb))
 	case models.UserStateSmallSurveyWaitingExamSet:
 		n, ok := choice(text, len(s.ExamSets))
 		if !ok {

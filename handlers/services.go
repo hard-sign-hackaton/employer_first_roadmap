@@ -7,6 +7,7 @@ type Services struct {
 	Reference  services.ReferenceService
 	Trajectory services.TrajectoryService
 	Roadmap    services.RoadmapService
+	Admission  services.AdmissionService
 }
 
 var app Services

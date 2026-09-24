@@ -52,6 +52,7 @@ func main() {
 		Reference:  services.NewReferenceService(referenceRepository),
 		Trajectory: services.NewTrajectoryService(careerRepository, educationRepository, profileRepository, roadmapRepository),
 		Roadmap:    services.NewRoadmapService(roadmapRepository, careerRepository),
+		Admission:  services.NewAdmissionService(educationRepository, profileRepository, roadmapRepository, careerRepository),
 	})
 
 	// Получение токена бота из переменных окружения

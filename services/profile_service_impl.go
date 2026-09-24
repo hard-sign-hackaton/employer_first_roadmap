@@ -69,6 +69,30 @@ func (s *profileService) SaveUserSubjects(ctx context.Context, userID int64, req
 	}
 	return subjectResponses(items), nil
 }
-func (s *profileService) SaveExamResults(context.Context, int64, dto.SaveExamResultsRequest) ([]dto.UserSubjectResponse, error) {
-	return nil, fmt.Errorf("exam results are not implemented")
+func (s *profileService) SaveExamResults(ctx context.Context, userID int64, request dto.SaveExamResultsRequest) ([]dto.UserSubjectResponse, error) {
+	if len(request.Results) == 0 {
+		return nil, fmt.Errorf("no exam results provided")
+	}
+	items := make([]models.UserSubject, 0, len(request.Results))
+	seen := make(map[int64]struct{}, len(request.Results))
+	for _, result := range request.Results {
+		if result.ExamSubjectID <= 0 || result.ActualScore < 0 || result.ActualScore > 100 {
+			return nil, fmt.Errorf("invalid exam result")
+		}
+		if _, exists := seen[result.ExamSubjectID]; exists {
+			return nil, fmt.Errorf("exam subject %d is duplicated", result.ExamSubjectID)
+		}
+		seen[result.ExamSubjectID] = struct{}{}
+		score := result.ActualScore
+		items = append(items, models.UserSubject{
+			ExamSubjectID: result.ExamSubjectID,
+			Status:        models.SubjectStatusPassed,
+			ActualScore:   &score,
+		})
+	}
+	saved, err := s.store.SaveExamResults(ctx, userID, items)
+	if err != nil {
+		return nil, err
+	}
+	return subjectResponses(saved), nil
 }

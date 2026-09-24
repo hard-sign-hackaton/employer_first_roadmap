@@ -160,14 +160,7 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 			return ctx.Send("Не удалось сформировать roadmap.")
 		}
 		utils.UpdateUserStateStorage(id, models.UserStateSurveyCompleted)
-		steps := make([]string, 0, len(roadmap.Steps))
-		for _, step := range roadmap.Steps {
-			steps = append(steps, fmt.Sprintf("%d. %s", step.OrderNo, step.Title))
-		}
-		if roadmap.NextAction == nil {
-			return ctx.Send("Roadmap сформирован:\n" + strings.Join(steps, "\n"))
-		}
-		return ctx.Send("Цель подтверждена. Roadmap сформирован:\n" + strings.Join(steps, "\n") + "\n\nСледующее действие: " + roadmap.NextAction.Title)
+		return sendRoadmap(ctx, roadmap)
 	}
 	return nil
 }

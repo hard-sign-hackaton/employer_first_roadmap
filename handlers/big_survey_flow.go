@@ -361,7 +361,7 @@ func toggleExamSubject(s *utils.SmallSurveyData, subjectID int64) {
 func ExamSubjectToggle(ctx maxbot.Context) error {
 	id := ctx.Update().UserID
 	state := utils.GetUserState(id)
-	if state != models.UserStateSmallSurveyWaitingExamSubject && state != models.UserStateBigSurveyWaitingExamSubject {
+	if state != models.UserStateSmallSurveyWaitingExamSubject && state != models.UserStateBigSurveyWaitingExamSubject && state != models.UserStateRoadmapExamChoiceSubjects {
 		return ctx.Answer("Этот выбор уже завершён. Начните заново командой /start.")
 	}
 	payload := ctx.Update().GetCallbackPayload()
@@ -396,15 +396,29 @@ func ExamSubjectsDone(ctx maxbot.Context) error {
 	id := ctx.Update().UserID
 	state := utils.GetUserState(id)
 	var nextState models.UserState
+	s := utils.GetSmallSurvey(id)
 	switch state {
 	case models.UserStateSmallSurveyWaitingExamSubject:
 		nextState = models.UserStateSmallSurveyWaitingExamScore
 	case models.UserStateBigSurveyWaitingExamSubject:
 		nextState = models.UserStateBigSurveyWaitingExamScore
+	case models.UserStateRoadmapExamChoiceSubjects:
+		status := models.SubjectStatusSelected
+		if s.Grade < 11 {
+			status = models.SubjectStatusPlanned
+		}
+		inputs := make([]dto.UserSubjectInput, 0, len(s.SelectedExamIDs))
+		for _, subjectID := range s.SelectedExamIDs {
+			inputs = append(inputs, dto.UserSubjectInput{ExamSubjectID: subjectID, Status: status})
+		}
+		if _, err := app.Profile.SaveUserSubjects(context.Background(), id, dto.SaveUserSubjectsRequest{Subjects: inputs}); err != nil {
+			return ctx.Answer("Не удалось сохранить обновлённый набор ЕГЭ.")
+		}
+		_ = ctx.Answer(fmt.Sprintf("✓ Набор ЕГЭ обновлён: %d предмет(ов)", len(s.SelectedExamIDs)))
+		return showRoadmapExamChoice(ctx)
 	default:
 		return ctx.Answer("Этот выбор уже завершён. Начните заново командой /start.")
 	}
-	s := utils.GetSmallSurvey(id)
 	if len(s.SelectedExamIDs) == 0 {
 		return ctx.Answer("Выберите хотя бы один предмет.")
 	}
@@ -563,8 +577,14 @@ func sendRoadmap(ctx maxbot.Context, roadmap dto.RoadmapResponse) error {
 	for _, step := range roadmap.Steps {
 		steps = append(steps, fmt.Sprintf("%d. %s", step.OrderNo, step.Title))
 	}
+	var summary string
 	if roadmap.NextAction == nil {
-		return ctx.Send("Цель подтверждена. Roadmap сформирован:\n" + strings.Join(steps, "\n"))
+		summary = "Цель подтверждена. Roadmap сформирован:\n" + strings.Join(steps, "\n")
+	} else {
+		summary = "Цель подтверждена. Roadmap сформирован:\n" + strings.Join(steps, "\n") + "\n\nСледующее действие: " + roadmap.NextAction.Title
 	}
-	return ctx.Send("Цель подтверждена. Roadmap сформирован:\n" + strings.Join(steps, "\n") + "\n\nСледующее действие: " + roadmap.NextAction.Title)
+	if err := ctx.Send(summary); err != nil {
+		return err
+	}
+	return startRoadmapScenario(ctx, roadmap)
 }

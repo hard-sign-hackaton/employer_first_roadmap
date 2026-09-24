@@ -31,4 +31,12 @@ const (
 	UserStateBigSurveyWaitingDirection        UserState = "big_survey_waiting_direction"
 	UserStateBigSurveyWaitingExamSet          UserState = "big_survey_waiting_exam_set"
 	UserStateBigSurveyWaitingGoalConfirmation UserState = "big_survey_waiting_goal_confirmation"
+
+	// Roadmap: сценарий развития пользователя после опроса
+	UserStateRoadmapExamChoice         UserState = "roadmap_exam_choice"
+	UserStateRoadmapExamChoiceSubjects UserState = "roadmap_exam_choice_subjects"
+	UserStateRoadmapExamScores         UserState = "roadmap_exam_scores"
+	UserStateRoadmapUniversityOptions  UserState = "roadmap_university_options"
+	UserStateRoadmapUniversityConfirm  UserState = "roadmap_university_confirm"
+	UserStateRoadmapPostAdmission      UserState = "roadmap_post_admission"
 )

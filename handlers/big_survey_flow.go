@@ -68,8 +68,12 @@ func handleBigSurveyMessage(ctx maxbot.Context) error {
 	case models.UserStateBigSurveyWaitingExamSubject:
 		return ctx.Send("Выберите предметы ЕГЭ кнопками ниже и нажмите «Готово».")
 	case models.UserStateBigSurveyWaitingExamScore:
-		if !saveExpectedScores(s, text) {
-			return ctx.Send("Неверный формат. Используйте «1:80,2:75» или «Пропустить».")
+		if !collectExamScore(s, text) {
+			return ctx.Send("Введите число от 0 до 100 или нажмите «Пропустить».")
+		}
+		if s.ExamScoreStep < len(s.SelectedExamIDs) {
+			text, keyboard := examScoreQuestion(s)
+			return ctx.Send(text, maxbot.WithKeyboard(keyboard))
 		}
 		if err := saveSelectedExamSubjects(ctx); err != nil {
 			return ctx.Send("Не удалось сохранить выбранные ЕГЭ.")
@@ -399,9 +403,11 @@ func ExamSubjectsDone(ctx maxbot.Context) error {
 		return ctx.Answer("Выберите хотя бы один предмет.")
 	}
 	s.SelectedExamScores = make(map[int64]*int16)
+	s.ExamScoreStep = 0
 	utils.UpdateUserStateStorage(id, nextState)
 	_ = ctx.Answer(fmt.Sprintf("✓ Выбрано предметов: %d", len(s.SelectedExamIDs)))
-	return showExamScorePrompt(ctx)
+	text, keyboard := examScoreQuestion(s)
+	return ctx.Send(text, maxbot.WithKeyboard(keyboard))
 }
 
 func saveFullSurveyInterests(ctx maxbot.Context) error {

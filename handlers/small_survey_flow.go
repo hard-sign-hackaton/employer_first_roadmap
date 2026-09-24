@@ -85,8 +85,12 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 	case models.UserStateSmallSurveyWaitingExamSubject:
 		return ctx.Send("Выберите предметы ЕГЭ кнопками ниже и нажмите «Готово».")
 	case models.UserStateSmallSurveyWaitingExamScore:
-		if !saveExpectedScores(s, text) {
-			return ctx.Send("Неверный формат. Используйте «1:80,2:75» или «Пропустить».")
+		if !collectExamScore(s, text) {
+			return ctx.Send("Введите число от 0 до 100 или нажмите «Пропустить».")
+		}
+		if s.ExamScoreStep < len(s.SelectedExamIDs) {
+			text, keyboard := examScoreQuestion(s)
+			return ctx.Send(text, maxbot.WithKeyboard(keyboard))
 		}
 		if err := saveSelectedExamSubjects(ctx); err != nil {
 			return ctx.Send("Не удалось сохранить выбранные ЕГЭ.")

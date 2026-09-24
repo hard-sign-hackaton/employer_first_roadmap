@@ -6,11 +6,19 @@ import (
 	"efr_bot/models"
 	"efr_bot/utils"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/max-messenger/max-bot-api-client-go/v2/model"
 	"github.com/max-messenger/maxbot"
+)
+
+const (
+	subjectToggleCallback     = "/subject_toggle"
+	subjectsDoneCallback      = "/subjects_done"
+	examSubjectToggleCallback = "/exam_subject_toggle"
+	examSubjectsDoneCallback  = "/exam_subjects_done"
 )
 
 func handleBigSurveyMessage(ctx maxbot.Context) error {
@@ -58,16 +66,14 @@ func handleBigSurveyMessage(ctx maxbot.Context) error {
 		}
 		return ctx.Send("Выберите «Да» или «Нет».")
 	case models.UserStateBigSurveyWaitingExamSubject:
-		if !chooseExamSubjects(s, text) {
-			return ctx.Send("Введите номера выбранных ЕГЭ через запятую, например: 1,3,5.")
-		}
-		utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingExamScore)
-		keyboard := model.NewKeyboard()
-		keyboard.AddRow().AddMessage("Пропустить")
-		return ctx.Send("Если знаете ожидаемые баллы, укажите их в формате «1:80,2:75». Или нажмите «Пропустить».", maxbot.WithKeyboard(keyboard))
+		return ctx.Send("Выберите предметы ЕГЭ кнопками ниже и нажмите «Готово».")
 	case models.UserStateBigSurveyWaitingExamScore:
-		if !saveExpectedScores(s, text) {
-			return ctx.Send("Неверный формат. Используйте «1:80,2:75» или «Пропустить».")
+		if !collectExamScore(s, text) {
+			return ctx.Send("Введите число от 0 до 100 или нажмите «Пропустить».")
+		}
+		if s.ExamScoreStep < len(s.SelectedExamIDs) {
+			text, keyboard := examScoreQuestion(s)
+			return ctx.Send(text, maxbot.WithKeyboard(keyboard))
 		}
 		if err := saveSelectedExamSubjects(ctx); err != nil {
 			return ctx.Send("Не удалось сохранить выбранные ЕГЭ.")
@@ -81,18 +87,7 @@ func handleBigSurveyMessage(ctx maxbot.Context) error {
 		s.SelectedActivityTagIDs = []int64{s.ActivityTagIDs[index]}
 		return showFullSurveySchoolSubjects(ctx)
 	case models.UserStateBigSurveyWaitingSubjects:
-		indexes, ok := multipleChoices(text, len(s.AvailableExamIDs))
-		if !ok {
-			return ctx.Send("Введите номера школьных предметов через запятую, например: 2,3,6.")
-		}
-		s.SelectedSchoolSubjectNames = nil
-		for _, index := range indexes {
-			s.SelectedSchoolSubjectNames = append(s.SelectedSchoolSubjectNames, s.AvailableExamNames[index])
-		}
-		if err := saveFullSurveyInterests(ctx); err != nil {
-			return ctx.Send("Не удалось сохранить интересы опроса.")
-		}
-		return showRecommendedCompanies(ctx)
+		return ctx.Send("Выберите школьные предметы кнопками ниже и нажмите «Готово».")
 	case models.UserStateBigSurveyWaitingCompany:
 		index, ok := choice(text, len(s.CompanyIDs))
 		if !ok {
@@ -166,7 +161,7 @@ func showBigRegions(ctx maxbot.Context) error {
 		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, region.Name))
 	}
 	utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingRegion)
-	return ctx.Send("2. Выберите регион номером:", maxbot.WithKeyboard(keyboard))
+	return ctx.Send("2. Выберите регион:", maxbot.WithKeyboard(keyboard))
 }
 
 func showFullSurveyActivities(ctx maxbot.Context) error {
@@ -217,14 +212,208 @@ func showFullSurveySchoolSubjects(ctx maxbot.Context) error {
 	}
 	s.AvailableExamIDs = nil
 	s.AvailableExamNames = nil
-	keyboard := model.NewKeyboard()
-	for index, subject := range subjects {
+	for _, subject := range subjects {
 		s.AvailableExamIDs = append(s.AvailableExamIDs, subject.ID)
 		s.AvailableExamNames = append(s.AvailableExamNames, subject.Name)
-		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, subject.Name))
 	}
+	s.SelectedSchoolSubjectIDs = nil
+	s.SelectedSchoolSubjectNames = nil
 	utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingSubjects)
-	return ctx.Send("Какие школьные предметы вам интересны? Выберите номера через запятую:", maxbot.WithKeyboard(keyboard))
+
+	text, keyboard := schoolSubjectsQuestion(s)
+	return ctx.Send(text, maxbot.WithKeyboard(keyboard))
+}
+
+func schoolSubjectsQuestion(s *utils.SmallSurveyData) (string, *model.Keyboard) {
+	keyboard := model.NewKeyboard()
+	for index, subjectID := range s.AvailableExamIDs {
+		label := fmt.Sprintf("%d. %s", index+1, s.AvailableExamNames[index])
+		if isSchoolSubjectSelected(s, subjectID) {
+			label = "✓ " + label
+		}
+		keyboard.AddRow().AddCallBack(label, fmt.Sprintf("%s:%d", subjectToggleCallback, subjectID))
+	}
+	keyboard.AddRow().AddCallBack("Готово", subjectsDoneCallback)
+
+	text := "Какие школьные предметы вам интересны? Нажимайте на предметы — выбранные помечаются галочкой. Когда закончите, нажмите «Готово»."
+	if len(s.SelectedSchoolSubjectNames) > 0 {
+		text += "\n\nВыбрано: " + strings.Join(s.SelectedSchoolSubjectNames, ", ")
+	}
+	return text, keyboard
+}
+
+func isSchoolSubjectSelected(s *utils.SmallSurveyData, subjectID int64) bool {
+	if slices.Contains(s.SelectedSchoolSubjectIDs, subjectID) {
+		return true
+	}
+	return false
+}
+
+func toggleSchoolSubject(s *utils.SmallSurveyData, subjectID int64) {
+	for i, id := range s.SelectedSchoolSubjectIDs {
+		if id == subjectID {
+			s.SelectedSchoolSubjectIDs = append(s.SelectedSchoolSubjectIDs[:i], s.SelectedSchoolSubjectIDs[i+1:]...)
+			s.SelectedSchoolSubjectNames = append(s.SelectedSchoolSubjectNames[:i], s.SelectedSchoolSubjectNames[i+1:]...)
+			return
+		}
+	}
+	name := ""
+	for i, id := range s.AvailableExamIDs {
+		if id == subjectID {
+			name = s.AvailableExamNames[i]
+			break
+		}
+	}
+	s.SelectedSchoolSubjectIDs = append(s.SelectedSchoolSubjectIDs, subjectID)
+	s.SelectedSchoolSubjectNames = append(s.SelectedSchoolSubjectNames, name)
+}
+
+func SubjectToggle(ctx maxbot.Context) error {
+	id := ctx.Update().UserID
+	if utils.GetUserState(id) != models.UserStateBigSurveyWaitingSubjects {
+		return ctx.Answer("Этот выбор уже завершён. Начните заново командой /start.")
+	}
+	payload := ctx.Update().GetCallbackPayload()
+	subjectID, err := strconv.ParseInt(payload.Param, 10, 64)
+	if err != nil {
+		return nil
+	}
+	s := utils.GetSmallSurvey(id)
+	subjectName := ""
+	found := false
+	for i, availableID := range s.AvailableExamIDs {
+		if availableID == subjectID {
+			subjectName = s.AvailableExamNames[i]
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil
+	}
+	toggleSchoolSubject(s, subjectID)
+	if isSchoolSubjectSelected(s, subjectID) {
+		_ = ctx.Answer("✓ Выбрано: " + subjectName)
+	} else {
+		_ = ctx.Answer("Снято: " + subjectName)
+	}
+	text, keyboard := schoolSubjectsQuestion(s)
+	return ctx.Edit(text, maxbot.WithKeyboard(keyboard))
+}
+
+func SubjectsDone(ctx maxbot.Context) error {
+	id := ctx.Update().UserID
+	if utils.GetUserState(id) != models.UserStateBigSurveyWaitingSubjects {
+		return ctx.Answer("Этот выбор уже завершён. Начните заново командой /start.")
+	}
+	s := utils.GetSmallSurvey(id)
+	if len(s.SelectedSchoolSubjectIDs) == 0 {
+		return ctx.Answer("Выберите хотя бы один предмет.")
+	}
+	if err := saveFullSurveyInterests(ctx); err != nil {
+		return ctx.Answer("Не удалось сохранить интересы опроса.")
+	}
+	_ = ctx.Answer(fmt.Sprintf("✓ Выбрано предметов: %d", len(s.SelectedSchoolSubjectIDs)))
+	return showRecommendedCompanies(ctx)
+}
+
+func examSubjectsQuestion(s *utils.SmallSurveyData) (string, *model.Keyboard) {
+	keyboard := model.NewKeyboard()
+	for index, subjectID := range s.AvailableExamIDs {
+		label := fmt.Sprintf("%d. %s", index+1, s.AvailableExamNames[index])
+		if isExamSubjectSelected(s, subjectID) {
+			label = "✓ " + label
+		}
+		keyboard.AddRow().AddCallBack(label, fmt.Sprintf("%s:%d", examSubjectToggleCallback, subjectID))
+	}
+	keyboard.AddRow().AddCallBack("Готово", examSubjectsDoneCallback)
+
+	text := "Какие предметы ЕГЭ вы уже выбрали? Нажимайте на предметы — выбранные помечаются галочкой. Когда закончите, нажмите «Готово»."
+	if len(s.SelectedExamNames) > 0 {
+		text += "\n\nВыбрано: " + strings.Join(s.SelectedExamNames, ", ")
+	}
+	return text, keyboard
+}
+
+func isExamSubjectSelected(s *utils.SmallSurveyData, subjectID int64) bool {
+	return slices.Contains(s.SelectedExamIDs, subjectID)
+}
+
+func toggleExamSubject(s *utils.SmallSurveyData, subjectID int64) {
+	for i, id := range s.SelectedExamIDs {
+		if id == subjectID {
+			s.SelectedExamIDs = append(s.SelectedExamIDs[:i], s.SelectedExamIDs[i+1:]...)
+			s.SelectedExamNames = append(s.SelectedExamNames[:i], s.SelectedExamNames[i+1:]...)
+			return
+		}
+	}
+	name := ""
+	for i, id := range s.AvailableExamIDs {
+		if id == subjectID {
+			name = s.AvailableExamNames[i]
+			break
+		}
+	}
+	s.SelectedExamIDs = append(s.SelectedExamIDs, subjectID)
+	s.SelectedExamNames = append(s.SelectedExamNames, name)
+}
+
+func ExamSubjectToggle(ctx maxbot.Context) error {
+	id := ctx.Update().UserID
+	state := utils.GetUserState(id)
+	if state != models.UserStateSmallSurveyWaitingExamSubject && state != models.UserStateBigSurveyWaitingExamSubject {
+		return ctx.Answer("Этот выбор уже завершён. Начните заново командой /start.")
+	}
+	payload := ctx.Update().GetCallbackPayload()
+	subjectID, err := strconv.ParseInt(payload.Param, 10, 64)
+	if err != nil {
+		return nil
+	}
+	s := utils.GetSmallSurvey(id)
+	subjectName := ""
+	found := false
+	for i, availableID := range s.AvailableExamIDs {
+		if availableID == subjectID {
+			subjectName = s.AvailableExamNames[i]
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil
+	}
+	toggleExamSubject(s, subjectID)
+	if isExamSubjectSelected(s, subjectID) {
+		_ = ctx.Answer("✓ Выбрано: " + subjectName)
+	} else {
+		_ = ctx.Answer("Снято: " + subjectName)
+	}
+	text, keyboard := examSubjectsQuestion(s)
+	return ctx.Edit(text, maxbot.WithKeyboard(keyboard))
+}
+
+func ExamSubjectsDone(ctx maxbot.Context) error {
+	id := ctx.Update().UserID
+	state := utils.GetUserState(id)
+	var nextState models.UserState
+	switch state {
+	case models.UserStateSmallSurveyWaitingExamSubject:
+		nextState = models.UserStateSmallSurveyWaitingExamScore
+	case models.UserStateBigSurveyWaitingExamSubject:
+		nextState = models.UserStateBigSurveyWaitingExamScore
+	default:
+		return ctx.Answer("Этот выбор уже завершён. Начните заново командой /start.")
+	}
+	s := utils.GetSmallSurvey(id)
+	if len(s.SelectedExamIDs) == 0 {
+		return ctx.Answer("Выберите хотя бы один предмет.")
+	}
+	s.SelectedExamScores = make(map[int64]*int16)
+	s.ExamScoreStep = 0
+	utils.UpdateUserStateStorage(id, nextState)
+	_ = ctx.Answer(fmt.Sprintf("✓ Выбрано предметов: %d", len(s.SelectedExamIDs)))
+	text, keyboard := examScoreQuestion(s)
+	return ctx.Send(text, maxbot.WithKeyboard(keyboard))
 }
 
 func saveFullSurveyInterests(ctx maxbot.Context) error {
@@ -313,7 +502,7 @@ func showRecommendedCompanies(ctx maxbot.Context) error {
 		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, company.Name))
 	}
 	utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingCompany)
-	return ctx.Send("Подходящие компании подобраны по вашим интересам:\n"+strings.Join(lines, "\n")+"\n\nВыберите компанию номером:", maxbot.WithKeyboard(keyboard))
+	return ctx.Send("Подходящие компании подобраны по вашим интересам:\n"+strings.Join(lines, "\n")+"\n\nВыберите компанию:", maxbot.WithKeyboard(keyboard))
 }
 
 func showBigDirections(ctx maxbot.Context) error {
@@ -351,6 +540,7 @@ func showBigRecommendedExamSets(ctx maxbot.Context) error {
 	s.ExamSets = nil
 	s.ExamSetNames = nil
 	keyboard := model.NewKeyboard()
+	lines := make([]string, 0, len(sets))
 	for index, set := range sets {
 		s.ExamSets = append(s.ExamSets, set.ExamSubjectIDs)
 		names := make([]string, 0, len(set.Subjects))
@@ -358,10 +548,14 @@ func showBigRecommendedExamSets(ctx maxbot.Context) error {
 			names = append(names, subject.Name)
 		}
 		s.ExamSetNames = append(s.ExamSetNames, names)
-		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, strings.Join(names, ", ")))
+		lines = append(lines, fmt.Sprintf("%d. %s", index+1, strings.Join(names, ", ")))
+		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. Набор %d", index+1, index+1))
 	}
 	utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingExamSet)
-	return ctx.Send(fmt.Sprintf("Выберите рекомендуемый набор ЕГЭ. Используем последние доступные правила приёма — %d год:", sets[0].SourceYear), maxbot.WithKeyboard(keyboard))
+	return ctx.Send(
+		fmt.Sprintf("Выберите рекомендуемый набор ЕГЭ. Используем последние доступные правила приёма — %d год:\n\n%s\n\nВведите номер набора или нажмите кнопку.", sets[0].SourceYear, strings.Join(lines, "\n")),
+		maxbot.WithKeyboard(keyboard),
+	)
 }
 
 func sendRoadmap(ctx maxbot.Context, roadmap dto.RoadmapResponse) error {

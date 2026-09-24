@@ -26,6 +26,7 @@ type SmallSurveyData struct {
 	SelectedExamIDs                        []int64
 	SelectedExamNames                      []string
 	SelectedExamScores                     map[int64]*int16
+	ExamScoreStep                          int
 	WillingToRelocate                      bool
 	CompanyIDs, RegionIDs, DirectionIDs    []int64
 	DirectionNames                         []string
@@ -36,6 +37,7 @@ type SmallSurveyData struct {
 	ActivityTagIDs                         []int64
 	ActivityTagNames                       []string
 	SelectedActivityTagIDs                 []int64
+	SelectedSchoolSubjectIDs               []int64
 	SelectedSchoolSubjectNames             []string
 }
 

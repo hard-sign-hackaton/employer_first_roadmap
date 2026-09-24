@@ -13,6 +13,12 @@ import (
 	"github.com/max-messenger/maxbot"
 )
 
+func gradeKeyboard() *model.Keyboard {
+	keyboard := model.NewKeyboard()
+	keyboard.AddRow().AddMessage("9").AddMessage("10").AddMessage("11")
+	return keyboard
+}
+
 func showExamSubjectSelection(ctx maxbot.Context, nextState models.UserState) error {
 	userID := ctx.Update().UserID
 	s := utils.GetSmallSurvey(userID)
@@ -22,14 +28,42 @@ func showExamSubjectSelection(ctx maxbot.Context, nextState models.UserState) er
 	}
 	s.AvailableExamIDs = nil
 	s.AvailableExamNames = nil
-	kb := model.NewKeyboard()
-	for index, subject := range subjects {
+	s.SelectedExamIDs = nil
+	s.SelectedExamNames = nil
+	s.SelectedExamScores = nil
+	for _, subject := range subjects {
 		s.AvailableExamIDs = append(s.AvailableExamIDs, subject.ID)
 		s.AvailableExamNames = append(s.AvailableExamNames, subject.Name)
-		kb.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, subject.Name))
 	}
 	utils.UpdateUserStateStorage(userID, nextState)
-	return ctx.Send("Выберите предметы ЕГЭ номерами через запятую, например: 1,3,5.", maxbot.WithKeyboard(kb))
+	text, keyboard := examSubjectsQuestion(s)
+	return ctx.Send(text, maxbot.WithKeyboard(keyboard))
+}
+
+func examScoreQuestion(s *utils.SmallSurveyData) (string, *model.Keyboard) {
+	name := s.SelectedExamNames[s.ExamScoreStep]
+	text := fmt.Sprintf("Ожидаемый балл по предмету «%s»? Введите число от 0 до 100 или нажмите «Пропустить».", name)
+	keyboard := model.NewKeyboard()
+	keyboard.AddRow().AddMessage("Пропустить")
+	return text, keyboard
+}
+
+func collectExamScore(s *utils.SmallSurveyData, text string) bool {
+	if strings.EqualFold(strings.TrimSpace(text), "Пропустить") {
+		s.ExamScoreStep++
+		return true
+	}
+	if s.ExamScoreStep >= len(s.SelectedExamIDs) {
+		return false
+	}
+	score, err := strconv.ParseInt(strings.TrimSpace(text), 10, 16)
+	if err != nil || score < 0 || score > 100 {
+		return false
+	}
+	value := int16(score)
+	s.SelectedExamScores[s.SelectedExamIDs[s.ExamScoreStep]] = &value
+	s.ExamScoreStep++
+	return true
 }
 
 func saveSelectedExamSubjects(ctx maxbot.Context) error {
@@ -47,41 +81,6 @@ func saveSelectedExamSubjects(ctx maxbot.Context) error {
 		return err
 	}
 	return nil
-}
-
-func chooseExamSubjects(s *utils.SmallSurveyData, text string) bool {
-	indexes, ok := multipleChoices(text, len(s.AvailableExamIDs))
-	if !ok {
-		return false
-	}
-	s.SelectedExamIDs = make([]int64, 0, len(indexes))
-	s.SelectedExamNames = make([]string, 0, len(indexes))
-	for _, index := range indexes {
-		s.SelectedExamIDs = append(s.SelectedExamIDs, s.AvailableExamIDs[index])
-		s.SelectedExamNames = append(s.SelectedExamNames, s.AvailableExamNames[index])
-	}
-	s.SelectedExamScores = make(map[int64]*int16)
-	return true
-}
-
-func saveExpectedScores(s *utils.SmallSurveyData, text string) bool {
-	if strings.EqualFold(strings.TrimSpace(text), "Пропустить") {
-		return true
-	}
-	for _, pair := range strings.Split(text, ",") {
-		parts := strings.Split(strings.TrimSpace(pair), ":")
-		if len(parts) != 2 {
-			return false
-		}
-		index, indexErr := strconv.Atoi(strings.TrimSpace(parts[0]))
-		score, scoreErr := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 16)
-		if indexErr != nil || scoreErr != nil || index < 1 || index > len(s.SelectedExamIDs) || score < 0 || score > 100 {
-			return false
-		}
-		value := int16(score)
-		s.SelectedExamScores[s.SelectedExamIDs[index-1]] = &value
-	}
-	return true
 }
 
 func showGoalConfirmation(ctx maxbot.Context, state models.UserState) error {
@@ -102,21 +101,4 @@ func showGoalConfirmation(ctx maxbot.Context, state models.UserState) error {
 			"Подтвердить цель?",
 		maxbot.WithKeyboard(keyboard),
 	)
-}
-
-func multipleChoices(text string, length int) ([]int, bool) {
-	seen := make(map[int]struct{})
-	result := make([]int, 0)
-	for _, part := range strings.Split(text, ",") {
-		value, err := strconv.Atoi(strings.TrimSpace(strings.Split(part, ".")[0]))
-		if err != nil || value < 1 || value > length {
-			return nil, false
-		}
-		index := value - 1
-		if _, exists := seen[index]; !exists {
-			seen[index] = struct{}{}
-			result = append(result, index)
-		}
-	}
-	return result, len(result) > 0
 }

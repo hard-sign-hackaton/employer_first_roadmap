@@ -25,5 +25,5 @@ func CallSmallSurvey(ctx maxbot.Context) error {
 		s.CompanyIDs = append(s.CompanyIDs, c.ID)
 		kb.AddRow().AddMessage(fmt.Sprintf("%d. %s", i+1, c.Name))
 	}
-	return ctx.Send("1. Выберите компанию номером:", maxbot.WithKeyboard(kb))
+	return ctx.Send("1. Выберите компанию:", maxbot.WithKeyboard(kb))
 }

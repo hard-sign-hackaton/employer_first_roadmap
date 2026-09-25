@@ -73,6 +73,17 @@ func (s *roadmapService) GetActiveRoadmap(ctx context.Context, userID int64) (dt
 	return roadmapResponse(roadmap), nil
 }
 
+func (s *roadmapService) RestartActiveRoadmap(ctx context.Context, userID int64) error {
+	roadmap, err := s.roadmaps.FindActiveRoadmapByUserID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("find active roadmap: %w", err)
+	}
+	if _, err := s.roadmaps.ArchiveRoadmap(ctx, roadmap.ID); err != nil {
+		return fmt.Errorf("archive active roadmap: %w", err)
+	}
+	return nil
+}
+
 func (s *roadmapService) UpdateRoadmapStep(ctx context.Context, userID int64, step dto.GetRoadmapStepRequest, request dto.UpdateRoadmapStepRequest) (dto.RoadmapStepResponse, error) {
 	if step.RoadmapID <= 0 || step.StepID <= 0 {
 		return dto.RoadmapStepResponse{}, fmt.Errorf("roadmap_id and step_id must be positive")

@@ -158,6 +158,16 @@ func testSmallSurveyScenarioCreatesRoadmap(t *testing.T) {
 	if resumedRoadmap.ID != roadmap.ID || resumedRoadmap.NextAction == nil || resumedRoadmap.NextAction.StepType != models.RoadmapStepTypeChooseOrConfirmExams {
 		t.Fatalf("unexpected resumed roadmap: %#v", resumedRoadmap)
 	}
+	if err := roadmapService.RestartActiveRoadmap(ctx, scenarioUserID); err != nil {
+		t.Fatalf("restart active roadmap: %v", err)
+	}
+	if _, err := roadmapService.GetActiveRoadmap(ctx, scenarioUserID); err == nil {
+		t.Fatal("no active roadmap must remain after restart")
+	}
+	archivedRoadmap, err := roadmapService.GetRoadmap(ctx, scenarioUserID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
+	if err != nil || archivedRoadmap.Status != models.RoadmapStatusArchived {
+		t.Fatalf("roadmap must be archived after restart: %v; roadmap=%#v", err, archivedRoadmap)
+	}
 	if roadmap.Steps[0].Status != models.RoadmapStepStatusActive {
 		t.Fatalf("first roadmap step status = %q, want %q", roadmap.Steps[0].Status, models.RoadmapStepStatusActive)
 	}
@@ -176,8 +186,8 @@ func testSmallSurveyScenarioCreatesRoadmap(t *testing.T) {
 		Count(&activeRoadmaps).Error; err != nil {
 		t.Fatalf("count active roadmaps: %v", err)
 	}
-	if activeRoadmaps != 1 {
-		t.Fatalf("active roadmaps = %d, want 1", activeRoadmaps)
+	if activeRoadmaps != 0 {
+		t.Fatalf("active roadmaps = %d, want 0 after restart", activeRoadmaps)
 	}
 }
 

@@ -316,8 +316,8 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 		t.Fatalf("education options = %d, want at least two programs for admission-plan test", len(options))
 	}
 	option := options[0]
-	if option.AdmissionYear != targetAdmissionYear || option.RulesSourceYear != 2026 {
-		t.Fatalf("education option years = target %d / rules %d, want %d / 2026", option.AdmissionYear, option.RulesSourceYear, targetAdmissionYear)
+	if option.AdmissionYear != 2026 || option.RulesSourceYear != 2026 {
+		t.Fatalf("education option years = admission %d / rules %d, want 2026 / 2026", option.AdmissionYear, option.RulesSourceYear)
 	}
 	if option.PassingScoreSourceYear == nil || *option.PassingScoreSourceYear != 2025 {
 		t.Fatalf("passing-score source year = %v, want 2025", option.PassingScoreSourceYear)
@@ -327,7 +327,7 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get admission plan limits: %v", err)
 	}
-	if limits.AdmissionYear != targetAdmissionYear || limits.RulesSourceYear != 2026 || limits.MaxUniversities != 5 || limits.MaxProgramsPerUniversity != 5 {
+	if limits.AdmissionYear != 2026 || limits.RulesSourceYear != 2026 || limits.MaxUniversities != 5 || limits.MaxProgramsPerUniversity != 5 {
 		t.Fatalf("unexpected plan limits: %#v", limits)
 	}
 	applications, err := admissionService.SaveAdmissionPlan(ctx, userID, dto.GetAdmissionPlanRequest{RoadmapID: roadmap.ID}, dto.SaveAdmissionPlanRequest{Applications: []dto.AdmissionPlanItemInput{

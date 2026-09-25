@@ -21,7 +21,7 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 	case models.UserStateSmallSurveyWaitingCompanyName:
 		n, ok := choice(text, len(s.CompanyIDs))
 		if !ok {
-			return ctx.Send("Выберите компанию:")
+			return resendSmallCompanies(ctx, "Выберите компанию:")
 		}
 		s.CompanyID = s.CompanyIDs[n]
 		company, err := app.Trajectory.SelectCompany(context.Background(), id, dto.SelectCompanyRequest{CompanyID: s.CompanyID})
@@ -34,7 +34,7 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 	case models.UserStateSmallSurveyWaitingGrade:
 		grade, err := strconv.ParseInt(text, 10, 16)
 		if err != nil || grade < 9 || grade > 11 {
-			return ctx.Send("Введите 9, 10 или 11.")
+			return resendSmallGrade(ctx, "Введите 9, 10 или 11.")
 		}
 		s.Grade = int16(grade)
 		regions, err := app.Reference.ListRegions(context.Background())
@@ -52,7 +52,7 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 	case models.UserStateSmallSurveyWaitingRegion:
 		n, ok := choice(text, len(s.RegionIDs))
 		if !ok {
-			return ctx.Send("Выберите регион из доступных:")
+			return resendSmallRegions(ctx, "Выберите регион из доступных:")
 		}
 		s.RegionID = s.RegionIDs[n]
 		utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingRelocation)
@@ -61,7 +61,7 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 		return ctx.Send("4. Готовы рассмотреть обучение в другом регионе?", maxbot.WithKeyboard(kb))
 	case models.UserStateSmallSurveyWaitingRelocation:
 		if text != "Да" && text != "Нет" {
-			return ctx.Send("Выберите «Да» или «Нет».")
+			return resendSmallRelocation(ctx, "Выберите «Да» или «Нет».")
 		}
 		s.WillingToRelocate = text == "Да"
 		if _, err := app.Profile.SaveProfile(context.Background(), id, dto.UpsertProfileRequest{Grade: s.Grade, RegionID: s.RegionID, WillingToRelocate: s.WillingToRelocate}); err != nil {
@@ -81,12 +81,12 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 		if text == "Нет" {
 			return showDirections(ctx)
 		}
-		return ctx.Send("Выберите «Да» или «Нет».")
+		return resendSmallExamSelection(ctx, "Выберите «Да» или «Нет».")
 	case models.UserStateSmallSurveyWaitingExamSubject:
-		return ctx.Send("Выберите предметы ЕГЭ кнопками ниже и нажмите «Готово».")
+		return resendExamSubjects(ctx, "Выберите предметы ЕГЭ кнопками ниже и нажмите «Готово».")
 	case models.UserStateSmallSurveyWaitingExamScore:
 		if !collectExamScore(s, text) {
-			return ctx.Send("Введите число от 0 до 100 или нажмите «Пропустить».")
+			return resendExamScore(ctx, "Введите число от 0 до 100 или нажмите «Пропустить».")
 		}
 		if s.ExamScoreStep < len(s.SelectedExamIDs) {
 			text, keyboard := examScoreQuestion(s)
@@ -99,40 +99,18 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 	case models.UserStateSmallSurveyWaitingDirection:
 		n, ok := choice(text, len(s.DirectionIDs))
 		if !ok {
-			return ctx.Send("Выберите направление:")
+			return resendSmallDirections(ctx, "Выберите направление:")
 		}
 		s.CareerDirectionID = s.DirectionIDs[n]
 		s.CareerDirectionName = s.DirectionNames[n]
 		if s.Grade == 11 && len(s.SelectedExamIDs) > 0 {
 			return showGoalConfirmation(ctx, models.UserStateSmallSurveyWaitingGoalConfirmation)
 		}
-		sets, err := app.Trajectory.GetRecommendedExamSets(context.Background(), dto.GetRecommendedExamSetsRequest{CareerDirectionID: s.CareerDirectionID})
-		if err != nil {
-			return ctx.Send("Не удалось подобрать наборы ЕГЭ.")
-		}
-		if len(sets) == 0 {
-			return ctx.Send("Для этого направления пока нет наборов ЕГЭ на целевой год. Выберите другое направление.")
-		}
-		kb := model.NewKeyboard()
-		s.ExamSets = nil
-		s.ExamSetNames = nil
-		lines := make([]string, 0, len(sets))
-		for i, set := range sets {
-			s.ExamSets = append(s.ExamSets, set.ExamSubjectIDs)
-			names := []string{}
-			for _, v := range set.Subjects {
-				names = append(names, v.Name)
-			}
-			s.ExamSetNames = append(s.ExamSetNames, names)
-			lines = append(lines, fmt.Sprintf("%d. %s", i+1, strings.Join(names, ", ")))
-			kb.AddRow().AddMessage(fmt.Sprintf("%d. Набор %d", i+1, i+1))
-		}
-		utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingExamSet)
-		return ctx.Send(fmt.Sprintf("Выберите рекомендуемый набор ЕГЭ. Используем последние доступные правила приёма — %d год:\n\n%s\n\nВведите номер набора или нажмите кнопку.", sets[0].SourceYear, strings.Join(lines, "\n")), maxbot.WithKeyboard(kb))
+		return showSmallRecommendedExamSets(ctx)
 	case models.UserStateSmallSurveyWaitingExamSet:
 		n, ok := choice(text, len(s.ExamSets))
 		if !ok {
-			return ctx.Send("Выберите набор ЕГЭ.")
+			return resendSmallExamSets(ctx, "Выберите набор ЕГЭ.")
 		}
 		inputs := []dto.UserSubjectInput{}
 		for _, subjectID := range s.ExamSets[n] {
@@ -149,7 +127,10 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 			return showDirections(ctx)
 		}
 		if text != "Подтвердить" {
-			return ctx.Send("Выберите «Подтвердить» или «Изменить направление».")
+			if err := ctx.Send("Выберите «Подтвердить» или «Изменить направление»."); err != nil {
+				return err
+			}
+			return showGoalConfirmation(ctx, models.UserStateSmallSurveyWaitingGoalConfirmation)
 		}
 		goal, err := app.Trajectory.ConfirmGoal(context.Background(), id, dto.ConfirmGoalRequest{CareerDirectionID: s.CareerDirectionID, TargetAdmissionYear: admissionYear(s.Grade)})
 		if err != nil {
@@ -163,6 +144,100 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 		return sendRoadmap(ctx, roadmap)
 	}
 	return nil
+}
+
+func resendSmallCompanies(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	return showSmallCompanies(ctx)
+}
+
+func resendSmallGrade(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	return ctx.Send("2. Выберите класс:", maxbot.WithKeyboard(gradeKeyboard()))
+}
+
+func resendSmallRegions(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	s := utils.GetSmallSurvey(ctx.Update().UserID)
+	kb := model.NewKeyboard()
+	// Re-read the catalog so the visible labels always match the stored choice IDs.
+	regions, err := app.Reference.ListRegions(context.Background())
+	if err != nil {
+		return ctx.Send("Не удалось получить регионы.")
+	}
+	s.RegionIDs = nil
+	kb = model.NewKeyboard()
+	for i, region := range regions {
+		s.RegionIDs = append(s.RegionIDs, region.ID)
+		kb.AddRow().AddMessage(fmt.Sprintf("%d. %s", i+1, region.Name))
+	}
+	return ctx.Send("3. Выберите регион:", maxbot.WithKeyboard(kb))
+}
+
+func resendSmallRelocation(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	kb := model.NewKeyboard()
+	kb.AddRow().AddMessage("Да").AddMessage("Нет")
+	return ctx.Send("4. Готовы рассмотреть обучение в другом регионе?", maxbot.WithKeyboard(kb))
+}
+
+func resendSmallExamSelection(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	kb := model.NewKeyboard()
+	kb.AddRow().AddMessage("Да").AddMessage("Нет")
+	return ctx.Send("5. Вы уже выбрали предметы ЕГЭ?", maxbot.WithKeyboard(kb))
+}
+
+func resendSmallDirections(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	return showDirections(ctx)
+}
+
+func resendSmallExamSets(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	// The direction is already selected; regenerate sets from the source of truth.
+	return showSmallRecommendedExamSets(ctx)
+}
+
+func showSmallRecommendedExamSets(ctx maxbot.Context) error {
+	id := ctx.Update().UserID
+	s := utils.GetSmallSurvey(id)
+	sets, err := app.Trajectory.GetRecommendedExamSets(context.Background(), dto.GetRecommendedExamSetsRequest{CareerDirectionID: s.CareerDirectionID})
+	if err != nil {
+		return ctx.Send("Не удалось подобрать наборы ЕГЭ.")
+	}
+	if len(sets) == 0 {
+		return ctx.Send("Для этого направления пока нет наборов ЕГЭ на целевой год. Выберите другое направление.")
+	}
+	kb := model.NewKeyboard()
+	s.ExamSets, s.ExamSetNames = nil, nil
+	lines := make([]string, 0, len(sets))
+	for i, set := range sets {
+		s.ExamSets = append(s.ExamSets, set.ExamSubjectIDs)
+		names := make([]string, 0, len(set.Subjects))
+		for _, subject := range set.Subjects {
+			names = append(names, subject.Name)
+		}
+		s.ExamSetNames = append(s.ExamSetNames, names)
+		lines = append(lines, fmt.Sprintf("%d. %s", i+1, strings.Join(names, ", ")))
+		kb.AddRow().AddMessage(fmt.Sprintf("%d. Набор %d", i+1, i+1))
+	}
+	utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingExamSet)
+	return ctx.Send(fmt.Sprintf("Выберите рекомендуемый набор ЕГЭ. Используем последние доступные правила приёма — %d год:\n\n%s\n\nВведите номер набора или нажмите кнопку.", sets[0].SourceYear, strings.Join(lines, "\n")), maxbot.WithKeyboard(kb))
 }
 func showDirections(ctx maxbot.Context) error {
 	id := ctx.Update().UserID

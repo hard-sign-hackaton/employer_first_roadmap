@@ -34,9 +34,9 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 		case "Продолжить", "Начать обучение", "Открыть возможность работодателя", "Подать заявку в компанию":
 			return continueActiveRoadmap(ctx)
 		case "Показать весь план":
-			return showCurrentActiveRoadmap(ctx)
+			return showFullCurrentActiveRoadmap(ctx)
 		}
-		return ctx.Send("Выберите действие с клавиатуры.")
+		return resendRoadmapOverview(ctx, "Выберите действие с клавиатуры.")
 	case models.UserStateRoadmapExamChoice:
 		switch text {
 		case "Изменить набор ЕГЭ":
@@ -44,20 +44,20 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 		case "Набор верный, продолжить":
 			return finishRoadmapExamChoice(ctx)
 		}
-		return ctx.Send("Выберите действие с клавиатуры.")
+		return resendRoadmapExamChoice(ctx, "Выберите действие с клавиатуры.")
 	case models.UserStateRoadmapExamChoiceSubjects:
-		return ctx.Send("Выберите предметы ЕГЭ кнопками ниже и нажмите «Готово».")
+		return resendExamSubjects(ctx, "Выберите предметы ЕГЭ кнопками ниже и нажмите «Готово».")
 	case models.UserStateRoadmapPreparing:
 		if text == "Подготовка завершена" {
 			completeNextRoadmapStep(ctx)
 			return showCurrentActiveRoadmap(ctx)
 		}
-		return ctx.Send("Когда этот этап будет завершён, нажмите «Подготовка завершена».")
+		return resendRoadmapAction(ctx, "Когда этот этап будет завершён, нажмите «Подготовка завершена».")
 	case models.UserStateRoadmapExamReady:
 		if text == "ЕГЭ сданы" {
 			return showRoadmapExamScores(ctx)
 		}
-		return ctx.Send("Введите баллы только после сдачи ЕГЭ или нажмите «ЕГЭ сданы».")
+		return resendRoadmapAction(ctx, "Введите баллы только после сдачи ЕГЭ или нажмите «ЕГЭ сданы».")
 	case models.UserStateRoadmapExamScores:
 		return handleRoadmapExamScore(ctx, text)
 	case models.UserStateRoadmapUniversityOptions:
@@ -76,7 +76,7 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 		}
 		index, ok := choice(text, len(s.AdmissionProgramIDs))
 		if !ok {
-			return ctx.Send("Выберите вариант с клавиатуры.")
+			return resendRoadmapUniversityOptions(ctx, "Выберите вариант с клавиатуры.")
 		}
 		return toggleAdmissionProgram(ctx, index)
 	case models.UserStateRoadmapAdmissionSubmitting:
@@ -84,7 +84,7 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 			completeNextRoadmapStep(ctx)
 			return showCurrentActiveRoadmap(ctx)
 		}
-		return ctx.Send("Когда документы будут поданы, нажмите «Документы поданы».")
+		return resendRoadmapAction(ctx, "Когда документы будут поданы, нажмите «Документы поданы».")
 	case models.UserStateRoadmapEnrollmentChoice:
 		if text == "Не поступил" {
 			if _, err := app.Admission.SaveEnrollmentChoice(context.Background(), id, dto.GetAdmissionPlanRequest{RoadmapID: s.RoadmapID}, dto.SaveEnrollmentChoiceRequest{Status: models.EnrollmentStatusNotEnrolled}); err != nil {
@@ -99,7 +99,7 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 		}
 		index, ok := choice(text, len(s.AdmissionApplicationIDs))
 		if !ok {
-			return ctx.Send("Выберите итог приёмной кампании с клавиатуры.")
+			return resendEnrollmentChoice(ctx, "Выберите итог приёмной кампании с клавиатуры.")
 		}
 		return saveEnrollmentChoice(ctx, index)
 	case models.UserStateRoadmapLearning:
@@ -107,13 +107,13 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 			completeNextRoadmapStep(ctx)
 			return showEmployerExperience(ctx)
 		}
-		return ctx.Send("Выберите действие с клавиатуры.")
+		return resendLearningProgress(ctx, "Выберите действие с клавиатуры.")
 	case models.UserStateRoadmapEmployerExperience:
 		if text == "Практика завершена" {
 			completeNextRoadmapStep(ctx)
 			return showCurrentActiveRoadmap(ctx)
 		}
-		return ctx.Send("Когда возможность работодателя будет завершена, нажмите «Практика завершена».")
+		return resendRoadmapAction(ctx, "Когда возможность работодателя будет завершена, нажмите «Практика завершена».")
 	case models.UserStateRoadmapEmployerApplication:
 		if text == "Подать заявку" {
 			if _, err := app.Roadmap.SubmitEmployerApplication(context.Background(), id, dto.GetRoadmapRequest{RoadmapID: s.RoadmapID}); err != nil {
@@ -122,7 +122,7 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 			completeNextRoadmapStep(ctx)
 			return showCurrentActiveRoadmap(ctx)
 		}
-		return ctx.Send("Нажмите «Подать заявку», когда документы для компании готовы.")
+		return resendRoadmapAction(ctx, "Нажмите «Подать заявку», когда документы для компании готовы.")
 	case models.UserStateRoadmapPostAdmission:
 		return handleRoadmapPostAdmission(ctx, text)
 	}
@@ -138,32 +138,99 @@ func showCurrentActiveRoadmap(ctx maxbot.Context) error {
 	return showActiveRoadmap(ctx, roadmap)
 }
 
+func showFullCurrentActiveRoadmap(ctx maxbot.Context) error {
+	roadmap, err := app.Roadmap.GetActiveRoadmap(context.Background(), ctx.Update().UserID)
+	if err != nil {
+		return showCurrentActiveRoadmap(ctx)
+	}
+	return showFullActiveRoadmap(ctx, roadmap)
+}
+
 func showActiveRoadmap(ctx maxbot.Context, roadmap dto.RoadmapResponse) error {
+	return sendActiveRoadmap(ctx, roadmap, false)
+}
+
+func showFullActiveRoadmap(ctx maxbot.Context, roadmap dto.RoadmapResponse) error {
+	return sendActiveRoadmap(ctx, roadmap, true)
+}
+
+func sendActiveRoadmap(ctx maxbot.Context, roadmap dto.RoadmapResponse, full bool) error {
 	id := ctx.Update().UserID
 	s := utils.GetSmallSurvey(id)
 	s.RoadmapID = roadmap.ID
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapOverview)
 	steps := make([]string, 0, len(roadmap.Steps))
 	completed := 0
+	lastCompleted := ""
 	for _, step := range roadmap.Steps {
 		mark := "○"
 		if step.Status == models.RoadmapStepStatusCompleted {
 			mark = "✓"
 			completed++
+			lastCompleted = fmt.Sprintf("✓ Последний завершённый: %d. %s", step.OrderNo, step.Title)
 		} else if step.Status == models.RoadmapStepStatusActive {
 			mark = "→"
 		}
-		steps = append(steps, fmt.Sprintf("%s %d. %s", mark, step.OrderNo, step.Title))
+		if full {
+			steps = append(steps, fmt.Sprintf("%s %d. %s", mark, step.OrderNo, step.Title))
+		}
 	}
-	text := fmt.Sprintf("Ваш roadmap: выполнено %d из %d шагов.\n\n%s", completed, len(roadmap.Steps), strings.Join(steps, "\n"))
+	text := fmt.Sprintf("Ваш roadmap: выполнено %d из %d шагов.", completed, len(roadmap.Steps))
+	if full {
+		text += "\n\n" + strings.Join(steps, "\n")
+	} else if lastCompleted != "" {
+		text += "\n\n" + lastCompleted
+	}
 	if roadmap.NextAction == nil {
 		return ctx.Send(text + "\n\nRoadmap завершён.")
 	}
-	text += "\n\nСледующее действие: " + roadmap.NextAction.Title
+	text += "\n\n→ Следующий шаг: " + roadmap.NextAction.Title
 	kb := model.NewKeyboard()
 	kb.AddRow().AddMessage(roadmapPrimaryAction(roadmap.NextAction.StepType))
 	kb.AddRow().AddMessage("Показать весь план")
 	return ctx.Send(text, maxbot.WithKeyboard(kb))
+}
+
+func resendRoadmapOverview(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	return showCurrentActiveRoadmap(ctx)
+}
+
+func resendRoadmapExamChoice(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	return showRoadmapExamChoice(ctx)
+}
+
+func resendRoadmapUniversityOptions(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	return showRoadmapUniversityOptions(ctx, utils.GetSmallSurvey(ctx.Update().UserID).AdmissionSearchAllRegions)
+}
+
+func resendEnrollmentChoice(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	return showEnrollmentChoice(ctx)
+}
+
+func resendLearningProgress(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	return showLearningProgress(ctx)
+}
+
+func resendRoadmapAction(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	return continueActiveRoadmap(ctx)
 }
 
 func continueActiveRoadmap(ctx maxbot.Context) error {
@@ -319,7 +386,11 @@ func handleRoadmapExamScore(ctx maxbot.Context, text string) error {
 	if !strings.EqualFold(text, "Пропустить") {
 		score, err := strconv.ParseInt(text, 10, 16)
 		if err != nil || score < 0 || score > 100 {
-			return ctx.Send("Введите число от 0 до 100 или нажмите «Пропустить».")
+			if err := ctx.Send("Введите число от 0 до 100 или нажмите «Пропустить»."); err != nil {
+				return err
+			}
+			question, kb := actualExamScoreQuestion(s)
+			return ctx.Send(question, maxbot.WithKeyboard(kb))
 		}
 		s.ActualExamScores[s.ActualExamIDs[s.ExamScoreStep]] = int16(score)
 	}
@@ -460,7 +531,7 @@ func toggleAdmissionProgram(ctx maxbot.Context, index int) error {
 	id := ctx.Update().UserID
 	s := utils.GetSmallSurvey(id)
 	if index < 0 || index >= len(s.AdmissionProgramIDs) {
-		return ctx.Send("Не удалось определить выбранный вариант.")
+		return resendRoadmapUniversityOptions(ctx, "Не удалось определить выбранный вариант.")
 	}
 	programID := s.AdmissionProgramIDs[index]
 	toggleAdmissionProgramSelection(s, programID, index)
@@ -529,7 +600,10 @@ func AdmissionPlanDone(ctx maxbot.Context) error {
 		return ctx.Answer("Выбор программ уже завершён.")
 	}
 	if len(utils.GetSmallSurvey(id).PlannedAdmissionProgramIDs) == 0 {
-		return ctx.Answer("Выберите хотя бы одну программу.")
+		if err := ctx.Send("Выберите хотя бы одну программу."); err != nil {
+			return err
+		}
+		return editRoadmapUniversityOptions(ctx, utils.GetSmallSurvey(id).AdmissionSearchAllRegions)
 	}
 	_ = ctx.Answer("План поступления сохраняется")
 	return saveAdmissionPlan(ctx)
@@ -548,7 +622,7 @@ func saveAdmissionPlan(ctx maxbot.Context) error {
 	id := ctx.Update().UserID
 	s := utils.GetSmallSurvey(id)
 	if len(s.PlannedAdmissionProgramIDs) == 0 {
-		return ctx.Send("Выберите хотя бы одну программу для плана подачи.")
+		return resendRoadmapUniversityOptions(ctx, "Выберите хотя бы одну программу для плана подачи.")
 	}
 	inputs := make([]dto.AdmissionPlanItemInput, 0, len(s.PlannedAdmissionProgramIDs))
 	for _, programID := range s.PlannedAdmissionProgramIDs {
@@ -605,7 +679,7 @@ func saveEnrollmentChoice(ctx maxbot.Context, index int) error {
 	id := ctx.Update().UserID
 	s := utils.GetSmallSurvey(id)
 	if index < 0 || index >= len(s.AdmissionApplicationIDs) {
-		return ctx.Send("Не удалось определить выбранную заявку.")
+		return resendEnrollmentChoice(ctx, "Не удалось определить выбранную заявку.")
 	}
 	applicationID := s.AdmissionApplicationIDs[index]
 	if _, err := app.Admission.SaveEnrollmentChoice(context.Background(), id,

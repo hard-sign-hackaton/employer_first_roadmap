@@ -151,6 +151,13 @@ func testSmallSurveyScenarioCreatesRoadmap(t *testing.T) {
 	if len(roadmap.Steps) == 0 || roadmap.NextAction == nil {
 		t.Fatal("roadmap must contain steps and a next action")
 	}
+	resumedRoadmap, err := roadmapService.GetActiveRoadmap(ctx, scenarioUserID)
+	if err != nil {
+		t.Fatalf("resume active roadmap: %v", err)
+	}
+	if resumedRoadmap.ID != roadmap.ID || resumedRoadmap.NextAction == nil || resumedRoadmap.NextAction.StepType != models.RoadmapStepTypeChooseOrConfirmExams {
+		t.Fatalf("unexpected resumed roadmap: %#v", resumedRoadmap)
+	}
 	if roadmap.Steps[0].Status != models.RoadmapStepStatusActive {
 		t.Fatalf("first roadmap step status = %q, want %q", roadmap.Steps[0].Status, models.RoadmapStepStatusActive)
 	}
@@ -253,6 +260,9 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 	if err != nil || len(options) == 0 {
 		t.Fatalf("find education options: %v; options=%d", err, len(options))
 	}
+	if len(options) < 2 {
+		t.Fatalf("education options = %d, want at least two programs for admission-plan test", len(options))
+	}
 	option := options[0]
 	if option.AdmissionYear != targetAdmissionYear || option.RulesSourceYear != 2026 {
 		t.Fatalf("education option years = target %d / rules %d, want %d / 2026", option.AdmissionYear, option.RulesSourceYear, targetAdmissionYear)
@@ -268,13 +278,27 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 	if limits.AdmissionYear != targetAdmissionYear || limits.RulesSourceYear != 2026 || limits.MaxUniversities != 5 || limits.MaxProgramsPerUniversity != 5 {
 		t.Fatalf("unexpected plan limits: %#v", limits)
 	}
-	applications, err := admissionService.SaveAdmissionPlan(ctx, userID, dto.GetAdmissionPlanRequest{RoadmapID: roadmap.ID}, dto.SaveAdmissionPlanRequest{Applications: []dto.AdmissionPlanItemInput{{EducationProgramID: option.EducationProgramID}}})
-	if err != nil || len(applications) != 1 {
+	applications, err := admissionService.SaveAdmissionPlan(ctx, userID, dto.GetAdmissionPlanRequest{RoadmapID: roadmap.ID}, dto.SaveAdmissionPlanRequest{Applications: []dto.AdmissionPlanItemInput{
+		{EducationProgramID: option.EducationProgramID},
+		{EducationProgramID: options[1].EducationProgramID},
+	}})
+	if err != nil || len(applications) != 2 {
 		t.Fatalf("save admission plan: %v; applications=%d", err, len(applications))
 	}
-	applicationID := applications[0].ID
+	savedPlan, err := admissionService.GetAdmissionPlan(ctx, userID, dto.GetAdmissionPlanRequest{RoadmapID: roadmap.ID})
+	if err != nil || len(savedPlan) != 2 {
+		t.Fatalf("get saved admission plan: %v; applications=%d", err, len(savedPlan))
+	}
+	if _, err := roadmapService.GetEmployerOpportunity(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID}); err == nil {
+		t.Fatal("employer opportunity must not be available before final enrollment choice")
+	}
+	applicationID := applications[1].ID
 	if _, err := admissionService.SaveEnrollmentChoice(ctx, userID, dto.GetAdmissionPlanRequest{RoadmapID: roadmap.ID}, dto.SaveEnrollmentChoiceRequest{Status: models.EnrollmentStatusChosen, AdmissionApplicationID: &applicationID}); err != nil {
 		t.Fatalf("save enrollment choice: %v", err)
+	}
+	roadmapAfterEnrollment, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
+	if err != nil || roadmapAfterEnrollment.EnrollmentChoice == nil || roadmapAfterEnrollment.EnrollmentChoice.AdmissionApplicationID == nil || *roadmapAfterEnrollment.EnrollmentChoice.AdmissionApplicationID != applicationID {
+		t.Fatalf("roadmap must retain final enrollment choice: %v; choice=%#v", err, roadmapAfterEnrollment.EnrollmentChoice)
 	}
 	opportunity, err := roadmapService.GetEmployerOpportunity(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
 	if err != nil || !opportunity.IsAvailable || opportunity.Name == "" {

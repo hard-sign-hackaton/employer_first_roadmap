@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	. "efr_bot/models"
 	"efr_bot/utils"
 
@@ -21,6 +22,9 @@ func CallMenu(ctx maxbot.Context) error {
 	kb := model.NewKeyboard()
 	userID := ctx.Update().UserID
 	userState := utils.GetUserState(userID)
+	if roadmap, err := app.Roadmap.GetActiveRoadmap(context.Background(), userID); err == nil {
+		return showActiveRoadmap(ctx, roadmap)
+	}
 
 	switch userState {
 	case UserStateStart:

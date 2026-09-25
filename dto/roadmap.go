@@ -17,11 +17,12 @@ type RoadmapStepResponse struct {
 
 // RoadmapResponse — текущий снимок roadmap и следующее действие пользователя.
 type RoadmapResponse struct {
-	ID         int64                 `json:"id"`
-	GoalID     int64                 `json:"goal_id"`
-	Status     string                `json:"status"`
-	Steps      []RoadmapStepResponse `json:"steps"`
-	NextAction *RoadmapStepResponse  `json:"next_action,omitempty"`
+	ID               int64                     `json:"id"`
+	GoalID           int64                     `json:"goal_id"`
+	Status           string                    `json:"status"`
+	Steps            []RoadmapStepResponse     `json:"steps"`
+	NextAction       *RoadmapStepResponse      `json:"next_action,omitempty"`
+	EnrollmentChoice *EnrollmentChoiceResponse `json:"enrollment_choice,omitempty"`
 }
 
 // CreateRoadmapRequest создаёт общий roadmap для уже подтверждённой цели.

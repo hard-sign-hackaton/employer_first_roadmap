@@ -65,6 +65,14 @@ func (s *roadmapService) GetRoadmap(ctx context.Context, userID int64, request d
 	return roadmapResponse(roadmap), nil
 }
 
+func (s *roadmapService) GetActiveRoadmap(ctx context.Context, userID int64) (dto.RoadmapResponse, error) {
+	roadmap, err := s.roadmaps.FindActiveRoadmapByUserID(ctx, userID)
+	if err != nil {
+		return dto.RoadmapResponse{}, fmt.Errorf("find active roadmap: %w", err)
+	}
+	return roadmapResponse(roadmap), nil
+}
+
 func (s *roadmapService) UpdateRoadmapStep(ctx context.Context, userID int64, step dto.GetRoadmapStepRequest, request dto.UpdateRoadmapStepRequest) (dto.RoadmapStepResponse, error) {
 	if step.RoadmapID <= 0 || step.StepID <= 0 {
 		return dto.RoadmapStepResponse{}, fmt.Errorf("roadmap_id and step_id must be positive")
@@ -178,6 +186,7 @@ func roadmapSteps(template models.RoadmapTemplate) []models.RoadmapStep {
 func roadmapResponse(roadmap models.Roadmap) dto.RoadmapResponse {
 	steps := make([]dto.RoadmapStepResponse, 0, len(roadmap.Steps))
 	var nextAction *dto.RoadmapStepResponse
+	var enrollmentChoice *dto.EnrollmentChoiceResponse
 	for _, step := range roadmap.Steps {
 		response := roadmapStepResponse(step)
 		steps = append(steps, response)
@@ -186,12 +195,17 @@ func roadmapResponse(roadmap models.Roadmap) dto.RoadmapResponse {
 			nextAction = &next
 		}
 	}
+	if roadmap.EnrollmentChoice != nil {
+		response := enrollmentChoiceResponse(*roadmap.EnrollmentChoice)
+		enrollmentChoice = &response
+	}
 	return dto.RoadmapResponse{
-		ID:         roadmap.ID,
-		GoalID:     roadmap.UserGoalID,
-		Status:     roadmap.Status,
-		Steps:      steps,
-		NextAction: nextAction,
+		ID:               roadmap.ID,
+		GoalID:           roadmap.UserGoalID,
+		Status:           roadmap.Status,
+		Steps:            steps,
+		NextAction:       nextAction,
+		EnrollmentChoice: enrollmentChoice,
 	}
 }
 

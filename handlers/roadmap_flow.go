@@ -16,13 +16,21 @@ import (
 func startRoadmapScenario(ctx maxbot.Context, roadmap dto.RoadmapResponse) error {
 	s := utils.GetSmallSurvey(ctx.Update().UserID)
 	s.RoadmapID = roadmap.ID
-	return showRoadmapExamChoice(ctx)
+	return showActiveRoadmap(ctx, roadmap)
 }
 
 func handleRoadmapMessage(ctx maxbot.Context) error {
 	id, text := ctx.Update().UserID, strings.TrimSpace(ctx.Update().Message.Body.Text)
 	state, s := utils.GetUserState(id), utils.GetSmallSurvey(id)
 	switch state {
+	case models.UserStateRoadmapOverview:
+		switch text {
+		case "Продолжить":
+			return continueActiveRoadmap(ctx)
+		case "Показать весь план":
+			return showCurrentActiveRoadmap(ctx)
+		}
+		return ctx.Send("Выберите действие с клавиатуры.")
 	case models.UserStateRoadmapExamChoice:
 		switch text {
 		case "Изменить набор ЕГЭ":
@@ -33,6 +41,17 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 		return ctx.Send("Выберите действие с клавиатуры.")
 	case models.UserStateRoadmapExamChoiceSubjects:
 		return ctx.Send("Выберите предметы ЕГЭ кнопками ниже и нажмите «Готово».")
+	case models.UserStateRoadmapPreparing:
+		if text == "Подготовка завершена" {
+			completeNextRoadmapStep(ctx)
+			return showCurrentActiveRoadmap(ctx)
+		}
+		return ctx.Send("Когда этот этап будет завершён, нажмите «Подготовка завершена».")
+	case models.UserStateRoadmapExamReady:
+		if text == "ЕГЭ сданы" {
+			return showRoadmapExamScores(ctx)
+		}
+		return ctx.Send("Введите баллы только после сдачи ЕГЭ или нажмите «ЕГЭ сданы».")
 	case models.UserStateRoadmapExamScores:
 		return handleRoadmapExamScore(ctx, text)
 	case models.UserStateRoadmapUniversityOptions:
@@ -42,22 +61,136 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 		case "Начать заново":
 			utils.UpdateUserStateStorage(id, models.UserStateStart)
 			return CallMenu(ctx)
+		case "Готово":
+			return saveAdmissionPlan(ctx)
+		case "Сбросить выбор":
+			s.PlannedAdmissionProgramIDs = nil
+			s.PlannedAdmissionProgramLines = nil
+			return showRoadmapUniversityOptions(ctx, false)
 		}
 		index, ok := choice(text, len(s.AdmissionProgramIDs))
 		if !ok {
 			return ctx.Send("Выберите вариант с клавиатуры.")
 		}
-		return selectRoadmapProgram(ctx, index)
-	case models.UserStateRoadmapUniversityConfirm:
-		switch text {
-		case "Подтвердить выбор":
-			return confirmRoadmapUniversity(ctx)
-		case "Выбрать другой вариант":
-			return showRoadmapUniversityOptions(ctx, false)
+		return toggleAdmissionProgram(ctx, index)
+	case models.UserStateRoadmapAdmissionSubmitting:
+		if text == "Документы поданы" {
+			completeNextRoadmapStep(ctx)
+			return showCurrentActiveRoadmap(ctx)
 		}
-		return ctx.Send("Нажмите «Подтвердить выбор» или «Выбрать другой вариант».")
+		return ctx.Send("Когда документы будут поданы, нажмите «Документы поданы».")
+	case models.UserStateRoadmapEnrollmentChoice:
+		if text == "Не поступил" {
+			return ctx.Send("Этот сценарий будет добавлен следующим этапом. Пока выберите другую траекторию через /start.")
+		}
+		index, ok := choice(text, len(s.AdmissionApplicationIDs))
+		if !ok {
+			return ctx.Send("Выберите итог приёмной кампании с клавиатуры.")
+		}
+		return saveEnrollmentChoice(ctx, index)
 	case models.UserStateRoadmapPostAdmission:
 		return handleRoadmapPostAdmission(ctx, text)
+	}
+	return nil
+}
+
+func showCurrentActiveRoadmap(ctx maxbot.Context) error {
+	roadmap, err := app.Roadmap.GetActiveRoadmap(context.Background(), ctx.Update().UserID)
+	if err != nil {
+		utils.UpdateUserStateStorage(ctx.Update().UserID, models.UserStateStart)
+		return CallMenu(ctx)
+	}
+	return showActiveRoadmap(ctx, roadmap)
+}
+
+func showActiveRoadmap(ctx maxbot.Context, roadmap dto.RoadmapResponse) error {
+	id := ctx.Update().UserID
+	s := utils.GetSmallSurvey(id)
+	s.RoadmapID = roadmap.ID
+	utils.UpdateUserStateStorage(id, models.UserStateRoadmapOverview)
+	steps := make([]string, 0, len(roadmap.Steps))
+	completed := 0
+	for _, step := range roadmap.Steps {
+		mark := "○"
+		if step.Status == models.RoadmapStepStatusCompleted {
+			mark = "✓"
+			completed++
+		} else if step.Status == models.RoadmapStepStatusActive {
+			mark = "→"
+		}
+		steps = append(steps, fmt.Sprintf("%s %d. %s", mark, step.OrderNo, step.Title))
+	}
+	text := fmt.Sprintf("Ваш roadmap: выполнено %d из %d шагов.\n\n%s", completed, len(roadmap.Steps), strings.Join(steps, "\n"))
+	if roadmap.NextAction == nil {
+		return ctx.Send(text + "\n\nRoadmap завершён.")
+	}
+	text += "\n\nСледующее действие: " + roadmap.NextAction.Title
+	kb := model.NewKeyboard()
+	kb.AddRow().AddMessage("Продолжить")
+	kb.AddRow().AddMessage("Показать весь план")
+	return ctx.Send(text, maxbot.WithKeyboard(kb))
+}
+
+func continueActiveRoadmap(ctx maxbot.Context) error {
+	id := ctx.Update().UserID
+	roadmap, err := app.Roadmap.GetActiveRoadmap(context.Background(), id)
+	if err != nil || roadmap.NextAction == nil {
+		return showCurrentActiveRoadmap(ctx)
+	}
+	s := utils.GetSmallSurvey(id)
+	s.RoadmapID = roadmap.ID
+	switch roadmap.NextAction.StepType {
+	case models.RoadmapStepTypeChooseOrConfirmExams:
+		if err := loadRoadmapExamSubjects(ctx); err != nil {
+			return ctx.Send("Не удалось получить сохранённый набор ЕГЭ.")
+		}
+		return showRoadmapExamChoice(ctx)
+	case models.RoadmapStepTypePrepareForExams:
+		utils.UpdateUserStateStorage(id, models.UserStateRoadmapPreparing)
+		kb := model.NewKeyboard()
+		kb.AddRow().AddMessage("Подготовка завершена")
+		return ctx.Send("Этап подготовки к ЕГЭ. Составьте план, решайте пробные варианты и разберите ошибки.\n\nОтметьте шаг только после завершения подготовки.", maxbot.WithKeyboard(kb))
+	case models.RoadmapStepTypePassExams:
+		if err := loadRoadmapExamSubjects(ctx); err != nil {
+			return ctx.Send("Не удалось получить сохранённый набор ЕГЭ.")
+		}
+		utils.UpdateUserStateStorage(id, models.UserStateRoadmapExamReady)
+		kb := model.NewKeyboard()
+		kb.AddRow().AddMessage("ЕГЭ сданы")
+		return ctx.Send("Фактические баллы вводятся только после сдачи ЕГЭ. Когда результаты будут известны, нажмите «ЕГЭ сданы».", maxbot.WithKeyboard(kb))
+	case models.RoadmapStepTypeChooseUniversity:
+		return showRoadmapUniversityOptions(ctx, false)
+	case models.RoadmapStepTypeSubmitAdmissionDocuments:
+		utils.UpdateUserStateStorage(id, models.UserStateRoadmapAdmissionSubmitting)
+		kb := model.NewKeyboard()
+		kb.AddRow().AddMessage("Документы поданы")
+		return ctx.Send("План подачи сохранён. Подайте документы в выбранные вузы и отметьте этот шаг после подачи.", maxbot.WithKeyboard(kb))
+	case models.RoadmapStepTypeLearnAtUniversity:
+		return showEnrollmentChoice(ctx)
+	case models.RoadmapStepTypeEmployerExperience:
+		return handleRoadmapPostAdmission(ctx, "Стажировки и вакансии")
+	default:
+		return ctx.Send("Для этого шага пока нет интерактивного действия.")
+	}
+}
+
+func loadRoadmapExamSubjects(ctx maxbot.Context) error {
+	subjects, err := app.Profile.GetUserSubjects(context.Background(), ctx.Update().UserID)
+	if err != nil {
+		return err
+	}
+	s := utils.GetSmallSurvey(ctx.Update().UserID)
+	s.PlannedExamIDs, s.PlannedExamNames = nil, nil
+	s.SelectedExamIDs, s.SelectedExamNames = nil, nil
+	for _, subject := range subjects {
+		switch subject.Status {
+		case models.SubjectStatusPlanned:
+			s.PlannedExamIDs = append(s.PlannedExamIDs, subject.ExamSubjectID)
+			s.PlannedExamNames = append(s.PlannedExamNames, subject.Name)
+		case models.SubjectStatusSelected, models.SubjectStatusPassed:
+			s.SelectedExamIDs = append(s.SelectedExamIDs, subject.ExamSubjectID)
+			s.SelectedExamNames = append(s.SelectedExamNames, subject.Name)
+		}
 	}
 	return nil
 }
@@ -89,7 +222,7 @@ func showRoadmapExamChoice(ctx maxbot.Context) error {
 
 func finishRoadmapExamChoice(ctx maxbot.Context) error {
 	completeNextRoadmapStep(ctx)
-	return showRoadmapExamScores(ctx)
+	return showCurrentActiveRoadmap(ctx)
 }
 
 func roadmapExamSubjects(s *utils.SmallSurveyData) ([]int64, []string) {
@@ -149,7 +282,8 @@ func handleRoadmapExamScore(ctx maxbot.Context, text string) error {
 			return ctx.Send("Не удалось сохранить результаты ЕГЭ. Попробуйте позже.")
 		}
 	}
-	return showRoadmapUniversityOptions(ctx, false)
+	completeNextRoadmapStep(ctx)
+	return showCurrentActiveRoadmap(ctx)
 }
 
 func showRoadmapUniversityOptions(ctx maxbot.Context, expandGeography bool) error {
@@ -175,10 +309,16 @@ func showRoadmapUniversityOptions(ctx maxbot.Context, expandGeography bool) erro
 			option.RulesSourceYear, scoreOrDash(option.MinimumTotalScore), scoreOrDash(option.BudgetPassingScore), scoreOrDash(option.PaidPassingScore), passingScoreSourceLabel(option.PassingScoreSourceYear))
 		lines = append(lines, line)
 		s.AdmissionOptionLines = append(s.AdmissionOptionLines, line)
-		kb.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, option.UniversityName))
+		label := fmt.Sprintf("%d. %s", index+1, option.UniversityName)
+		if admissionProgramSelected(s, option.EducationProgramID) {
+			label = "✓ " + label
+		}
+		kb.AddRow().AddMessage(label)
 	}
+	kb.AddRow().AddMessage("Готово")
+	kb.AddRow().AddMessage("Сбросить выбор")
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapUniversityOptions)
-	text := "Этап 3. Перед поступлением.\n\nПодобраны варианты под ваши результаты ЕГЭ и карьерное направление:\n\n" + strings.Join(lines, "\n\n") + "\n\nВыберите вуз и программу (позже выбор можно изменить):"
+	text := "Этап 3. План поступления.\n\nПодобраны варианты под ваши результаты ЕГЭ и карьерное направление:\n\n" + strings.Join(lines, "\n\n") + "\n\nВыберите несколько программ, затем нажмите «Готово». Выбрано: " + strconv.Itoa(len(s.PlannedAdmissionProgramIDs))
 	return ctx.Send(text, maxbot.WithKeyboard(kb))
 }
 
@@ -236,52 +376,105 @@ func passingScoreSourceLabel(year *int16) string {
 	return fmt.Sprintf(" (проходные баллы за %d)", *year)
 }
 
-func selectRoadmapProgram(ctx maxbot.Context, index int) error {
+func toggleAdmissionProgram(ctx maxbot.Context, index int) error {
 	id := ctx.Update().UserID
 	s := utils.GetSmallSurvey(id)
 	if index < 0 || index >= len(s.AdmissionProgramIDs) {
 		return ctx.Send("Не удалось определить выбранный вариант.")
 	}
-	s.SelectedProgramID = s.AdmissionProgramIDs[index]
-	s.SelectedProgramLabel = s.AdmissionOptionLines[index]
-	return showRoadmapUniversityConfirm(ctx)
+	programID := s.AdmissionProgramIDs[index]
+	for selectedIndex, selectedID := range s.PlannedAdmissionProgramIDs {
+		if selectedID == programID {
+			s.PlannedAdmissionProgramIDs = append(s.PlannedAdmissionProgramIDs[:selectedIndex], s.PlannedAdmissionProgramIDs[selectedIndex+1:]...)
+			s.PlannedAdmissionProgramLines = append(s.PlannedAdmissionProgramLines[:selectedIndex], s.PlannedAdmissionProgramLines[selectedIndex+1:]...)
+			return showRoadmapUniversityOptions(ctx, false)
+		}
+	}
+	s.PlannedAdmissionProgramIDs = append(s.PlannedAdmissionProgramIDs, programID)
+	s.PlannedAdmissionProgramLines = append(s.PlannedAdmissionProgramLines, s.AdmissionOptionLines[index])
+	return showRoadmapUniversityOptions(ctx, false)
 }
 
-func showRoadmapUniversityConfirm(ctx maxbot.Context) error {
-	id := ctx.Update().UserID
-	s := utils.GetSmallSurvey(id)
-	utils.UpdateUserStateStorage(id, models.UserStateRoadmapUniversityConfirm)
-	kb := model.NewKeyboard()
-	kb.AddRow().AddMessage("Подтвердить выбор").AddMessage("Выбрать другой вариант")
-	return ctx.Send("Вы выбрали:\n"+s.SelectedProgramLabel+"\n\nЗафиксировать этот выбор? Сменить его можно в любой момент.", maxbot.WithKeyboard(kb))
+func admissionProgramSelected(s *utils.SmallSurveyData, programID int64) bool {
+	for _, selectedID := range s.PlannedAdmissionProgramIDs {
+		if selectedID == programID {
+			return true
+		}
+	}
+	return false
 }
 
-func confirmRoadmapUniversity(ctx maxbot.Context) error {
+func saveAdmissionPlan(ctx maxbot.Context) error {
 	id := ctx.Update().UserID
 	s := utils.GetSmallSurvey(id)
-	if s.SelectedProgramID <= 0 {
-		return ctx.Send("Не выбран вариант поступления.")
+	if len(s.PlannedAdmissionProgramIDs) == 0 {
+		return ctx.Send("Выберите хотя бы одну программу для плана подачи.")
+	}
+	inputs := make([]dto.AdmissionPlanItemInput, 0, len(s.PlannedAdmissionProgramIDs))
+	for _, programID := range s.PlannedAdmissionProgramIDs {
+		inputs = append(inputs, dto.AdmissionPlanItemInput{EducationProgramID: programID})
 	}
 	applications, err := app.Admission.SaveAdmissionPlan(context.Background(), id,
 		dto.GetAdmissionPlanRequest{RoadmapID: s.RoadmapID},
-		dto.SaveAdmissionPlanRequest{Applications: []dto.AdmissionPlanItemInput{{EducationProgramID: s.SelectedProgramID}}})
+		dto.SaveAdmissionPlanRequest{Applications: inputs})
 	if err != nil || len(applications) == 0 {
-		return ctx.Send("Не удалось сохранить план поступления. Попробуйте позже.")
+		return ctx.Send("Не удалось сохранить план поступления: проверьте лимиты вузов и программ.")
 	}
-	applicationID := applications[0].ID
+	completeNextRoadmapStep(ctx)
+	if err := ctx.Send(fmt.Sprintf("План подачи сохранён: %d программ(ы). Итоговое зачисление вы укажете после завершения приёмной кампании.", len(applications))); err != nil {
+		return err
+	}
+	return showCurrentActiveRoadmap(ctx)
+}
+
+func showEnrollmentChoice(ctx maxbot.Context) error {
+	id := ctx.Update().UserID
+	s := utils.GetSmallSurvey(id)
+	roadmap, err := app.Roadmap.GetRoadmap(context.Background(), id, dto.GetRoadmapRequest{RoadmapID: s.RoadmapID})
+	if err != nil {
+		return ctx.Send("Не удалось получить текущий roadmap.")
+	}
+	if roadmap.EnrollmentChoice != nil && roadmap.EnrollmentChoice.Status == models.EnrollmentStatusChosen {
+		utils.UpdateUserStateStorage(id, models.UserStateRoadmapOverview)
+		return ctx.Send("Итог зачисления уже сохранён: " + roadmap.EnrollmentChoice.UniversityName + " — «" + roadmap.EnrollmentChoice.EducationProgramName + "». Следующий этап roadmap — обучение.")
+	}
+	applications, err := app.Admission.GetAdmissionPlan(context.Background(), id, dto.GetAdmissionPlanRequest{RoadmapID: s.RoadmapID})
+	if err != nil {
+		return ctx.Send("Не удалось получить сохранённый план поступления.")
+	}
+	if len(applications) == 0 {
+		return ctx.Send("Сначала сформируйте и сохраните план подачи документов.")
+	}
+	s.AdmissionApplicationIDs = nil
+	s.AdmissionApplicationLines = nil
+	kb := model.NewKeyboard()
+	lines := make([]string, 0, len(applications))
+	for index, application := range applications {
+		s.AdmissionApplicationIDs = append(s.AdmissionApplicationIDs, application.ID)
+		line := fmt.Sprintf("%d. %s — «%s»", index+1, application.UniversityName, application.ProgramName)
+		s.AdmissionApplicationLines = append(s.AdmissionApplicationLines, line)
+		lines = append(lines, line)
+		kb.AddRow().AddMessage(line)
+	}
+	kb.AddRow().AddMessage("Не поступил")
+	utils.UpdateUserStateStorage(id, models.UserStateRoadmapEnrollmentChoice)
+	return ctx.Send("Приёмная кампания завершена. Укажите итоговый вуз и программу:\n\n"+strings.Join(lines, "\n"), maxbot.WithKeyboard(kb))
+}
+
+func saveEnrollmentChoice(ctx maxbot.Context, index int) error {
+	id := ctx.Update().UserID
+	s := utils.GetSmallSurvey(id)
+	if index < 0 || index >= len(s.AdmissionApplicationIDs) {
+		return ctx.Send("Не удалось определить выбранную заявку.")
+	}
+	applicationID := s.AdmissionApplicationIDs[index]
 	if _, err := app.Admission.SaveEnrollmentChoice(context.Background(), id,
 		dto.GetAdmissionPlanRequest{RoadmapID: s.RoadmapID},
 		dto.SaveEnrollmentChoiceRequest{Status: models.EnrollmentStatusChosen, AdmissionApplicationID: &applicationID}); err != nil {
-		return ctx.Send("Не удалось зафиксировать выбор вуза. Попробуйте позже.")
+		return ctx.Send("Не удалось сохранить итог зачисления. Попробуйте позже.")
 	}
-	completeNextRoadmapStep(ctx)
-	completeNextRoadmapStep(ctx)
-	utils.UpdateUserStateStorage(id, models.UserStateRoadmapPostAdmission)
-	kb := model.NewKeyboard()
-	kb.AddRow().AddMessage("Дополнительные материалы")
-	kb.AddRow().AddMessage("Стажировки и вакансии")
-	kb.AddRow().AddMessage("Сменить вуз")
-	return ctx.Send("Этап 4. После поступления.\n\nВы поступили:\n"+s.SelectedProgramLabel+"\n\nЗдесь доступны дополнительные материалы для учёбы по направлению «"+s.CareerDirectionName+"» и возможности работодателя — стажировки, проекты и вакансии.", maxbot.WithKeyboard(kb))
+	utils.UpdateUserStateStorage(id, models.UserStateRoadmapOverview)
+	return ctx.Send("Итог зачисления сохранён. Roadmap уточнён для выбранного вуза; следующий шаг — обучение.")
 }
 
 func handleRoadmapPostAdmission(ctx maxbot.Context, text string) error {

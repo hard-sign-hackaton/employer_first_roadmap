@@ -309,13 +309,40 @@ func seedRoadmapTemplates(tx *gorm.DB, directions map[string]models.CareerDirect
 			return err
 		}
 		steps := []struct{ typ, title string }{
-			{models.RoadmapStepTypeChooseOrConfirmExams, "Подтвердить набор ЕГЭ"}, {models.RoadmapStepTypePrepareForExams, "Подготовиться к ЕГЭ"}, {models.RoadmapStepTypePassExams, "Сдать ЕГЭ"}, {models.RoadmapStepTypeChooseUniversity, "Выбрать вузы и образовательные программы"}, {models.RoadmapStepTypeSubmitAdmissionDocuments, "Подать документы"}, {models.RoadmapStepTypeLearnAtUniversity, "Учиться в выбранном вузе"}, {models.RoadmapStepTypeEmployerExperience, "Получить практический опыт у работодателя"}, {models.RoadmapStepTypeApplyToEmployer, "Подать документы в компанию"},
+			{models.RoadmapStepTypeChooseOrConfirmExams, "Подтвердить набор ЕГЭ"}, {models.RoadmapStepTypePrepareForExams, "Подготовиться к ЕГЭ"}, {models.RoadmapStepTypePassExams, "Сдать ЕГЭ"}, {models.RoadmapStepTypeChooseUniversity, "Выбрать вузы и образовательные программы"}, {models.RoadmapStepTypeSubmitAdmissionDocuments, "Подать документы"}, {models.RoadmapStepTypeConfirmEnrollment, "Подтвердить зачисление"}, {models.RoadmapStepTypeLearnAtUniversity, "Учиться в выбранном вузе"}, {models.RoadmapStepTypeEmployerExperience, "Получить практический опыт у работодателя"}, {models.RoadmapStepTypeApplyToEmployer, "Подать документы в компанию"},
 		}
-		for index, step := range steps {
-			value := models.RoadmapTemplateStep{RoadmapTemplateID: template.ID, OrderNo: int16(index + 1), StepType: step.typ, Title: step.title, Description: "Демонстрационный шаг roadmap для MVP."}
-			if err := tx.Where("roadmap_template_id = ? AND order_no = ?", template.ID, index+1).Assign(value).FirstOrCreate(&value).Error; err != nil {
-				return err
-			}
+		if err := upsertRoadmapTemplateSteps(tx, template.ID, steps); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func upsertRoadmapTemplateSteps(tx *gorm.DB, templateID int64, steps []struct{ typ, title string }) error {
+	var existing []models.RoadmapTemplateStep
+	if err := tx.Where("roadmap_template_id = ?", templateID).Find(&existing).Error; err != nil {
+		return err
+	}
+	byType := make(map[string]models.RoadmapTemplateStep, len(existing))
+	for _, step := range existing {
+		byType[step.StepType] = step
+	}
+	if len(existing) > 0 {
+		if err := tx.Model(&models.RoadmapTemplateStep{}).Where("roadmap_template_id = ?", templateID).Update("order_no", gorm.Expr("order_no + 100")).Error; err != nil {
+			return err
+		}
+	}
+	for index, step := range steps {
+		value, found := byType[step.typ]
+		if !found {
+			value = models.RoadmapTemplateStep{RoadmapTemplateID: templateID}
+		}
+		value.OrderNo = int16(index + 1)
+		value.StepType = step.typ
+		value.Title = step.title
+		value.Description = "Демонстрационный шаг roadmap для MVP."
+		if err := tx.Save(&value).Error; err != nil {
+			return err
 		}
 	}
 	return nil

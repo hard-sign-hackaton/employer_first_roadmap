@@ -77,6 +77,9 @@ func main() {
 	bot.HandleCallback("/subjects_done", handlers.SubjectsDone)
 	bot.HandleCallback("/exam_subject_toggle", handlers.ExamSubjectToggle)
 	bot.HandleCallback("/exam_subjects_done", handlers.ExamSubjectsDone)
+	bot.HandleCallback("/admission_program_toggle", handlers.AdmissionProgramToggle)
+	bot.HandleCallback("/admission_plan_done", handlers.AdmissionPlanDone)
+	bot.HandleCallback("/admission_plan_reset", handlers.AdmissionPlanReset)
 
 	// Старые кнопки demo-меню тоже возвращают пользователя в актуальный сценарий опроса.
 	bot.HandleCallback("/menu", handlers.CallMenu)

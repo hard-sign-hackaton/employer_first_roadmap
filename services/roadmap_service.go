@@ -16,6 +16,13 @@ type RoadmapService interface {
 	// Вход: dto.GetRoadmapRequest и идентификатор пользователя. Выход: dto.RoadmapResponse.
 	GetRoadmap(ctx context.Context, userID int64, request dto.GetRoadmapRequest) (dto.RoadmapResponse, error)
 
+	// GetActiveRoadmap возвращает активный roadmap пользователя для продолжения
+	// сценария после нового входа в бот или перезапуска приложения.
+	GetActiveRoadmap(ctx context.Context, userID int64) (dto.RoadmapResponse, error)
+
+	// RestartActiveRoadmap полностью очищает персональные данные пользователя для нового опроса.
+	RestartActiveRoadmap(ctx context.Context, userID int64) error
+
 	// UpdateRoadmapStep обновляет статус одного шага.
 	// Вход: dto.GetRoadmapStepRequest и dto.UpdateRoadmapStepRequest. Выход: dto.RoadmapStepResponse.
 	UpdateRoadmapStep(ctx context.Context, userID int64, step dto.GetRoadmapStepRequest, request dto.UpdateRoadmapStepRequest) (dto.RoadmapStepResponse, error)
@@ -27,4 +34,7 @@ type RoadmapService interface {
 	// GetEmployerOpportunity возвращает назначенную возможность работодателя после выбора вуза.
 	// Вход: dto.GetRoadmapRequest и идентификатор пользователя. Выход: dto.CompanyOpportunityResponse.
 	GetEmployerOpportunity(ctx context.Context, userID int64, request dto.GetRoadmapRequest) (dto.CompanyOpportunityResponse, error)
+
+	// SubmitEmployerApplication сохраняет подачу заявки только после завершённого практического шага.
+	SubmitEmployerApplication(ctx context.Context, userID int64, request dto.GetRoadmapRequest) (dto.EmployerApplicationResponse, error)
 }

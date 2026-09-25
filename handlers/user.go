@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	. "efr_bot/models"
 	"efr_bot/utils"
 
@@ -17,10 +18,24 @@ func CreateUser(ctx maxbot.Context) error {
 	return CallMenu(ctx)
 }
 
+// RestartScenario полностью очищает персональный сценарий и возвращает к первому вопросу.
+func RestartScenario(ctx maxbot.Context) error {
+	userID := ctx.Update().UserID
+	if err := app.Roadmap.RestartActiveRoadmap(context.Background(), userID); err != nil {
+		return ctx.Send("Не удалось очистить сценарий. Попробуйте /restart ещё раз.")
+	}
+	utils.ResetSmallSurvey(userID)
+	utils.UpdateUserStateStorage(userID, UserStateStart)
+	return CallMenu(ctx)
+}
+
 func CallMenu(ctx maxbot.Context) error {
 	kb := model.NewKeyboard()
 	userID := ctx.Update().UserID
 	userState := utils.GetUserState(userID)
+	if roadmap, err := app.Roadmap.GetActiveRoadmap(context.Background(), userID); err == nil {
+		return showActiveRoadmap(ctx, roadmap)
+	}
 
 	switch userState {
 	case UserStateStart:

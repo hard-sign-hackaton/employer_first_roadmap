@@ -33,10 +33,17 @@ const (
 	UserStateBigSurveyWaitingGoalConfirmation UserState = "big_survey_waiting_goal_confirmation"
 
 	// Roadmap: сценарий развития пользователя после опроса
-	UserStateRoadmapExamChoice         UserState = "roadmap_exam_choice"
-	UserStateRoadmapExamChoiceSubjects UserState = "roadmap_exam_choice_subjects"
-	UserStateRoadmapExamScores         UserState = "roadmap_exam_scores"
-	UserStateRoadmapUniversityOptions  UserState = "roadmap_university_options"
-	UserStateRoadmapUniversityConfirm  UserState = "roadmap_university_confirm"
-	UserStateRoadmapPostAdmission      UserState = "roadmap_post_admission"
+	UserStateRoadmapOverview            UserState = "roadmap_overview"
+	UserStateRoadmapExamChoice          UserState = "roadmap_exam_choice"
+	UserStateRoadmapExamChoiceSubjects  UserState = "roadmap_exam_choice_subjects"
+	UserStateRoadmapPreparing           UserState = "roadmap_preparing"
+	UserStateRoadmapExamReady           UserState = "roadmap_exam_ready"
+	UserStateRoadmapExamScores          UserState = "roadmap_exam_scores"
+	UserStateRoadmapUniversityOptions   UserState = "roadmap_university_options"
+	UserStateRoadmapAdmissionSubmitting UserState = "roadmap_admission_submitting"
+	UserStateRoadmapEnrollmentChoice    UserState = "roadmap_enrollment_choice"
+	UserStateRoadmapLearning            UserState = "roadmap_learning"
+	UserStateRoadmapEmployerExperience  UserState = "roadmap_employer_experience"
+	UserStateRoadmapEmployerApplication UserState = "roadmap_employer_application"
+	UserStateRoadmapPostAdmission       UserState = "roadmap_post_admission"
 )

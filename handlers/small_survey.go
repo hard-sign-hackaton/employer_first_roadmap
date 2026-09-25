@@ -15,11 +15,17 @@ func CallSmallSurvey(ctx maxbot.Context) error {
 	userID := ctx.Update().UserID
 	utils.ResetSmallSurvey(userID)
 	utils.UpdateUserStateStorage(userID, UserStateSmallSurveyWaitingCompanyName)
+	return showSmallCompanies(ctx)
+}
+
+func showSmallCompanies(ctx maxbot.Context) error {
+	userID := ctx.Update().UserID
 	companies, err := app.Trajectory.FindCompanies(context.Background(), dto.FindCompaniesRequest{Limit: 10})
 	if err != nil {
 		return ctx.Send("Не удалось получить компании. Попробуйте позже.")
 	}
 	s := utils.GetSmallSurvey(userID)
+	s.CompanyIDs = nil
 	kb := model.NewKeyboard()
 	for i, c := range companies {
 		s.CompanyIDs = append(s.CompanyIDs, c.ID)

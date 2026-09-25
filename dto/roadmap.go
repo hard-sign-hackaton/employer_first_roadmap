@@ -17,11 +17,13 @@ type RoadmapStepResponse struct {
 
 // RoadmapResponse — текущий снимок roadmap и следующее действие пользователя.
 type RoadmapResponse struct {
-	ID         int64                 `json:"id"`
-	GoalID     int64                 `json:"goal_id"`
-	Status     string                `json:"status"`
-	Steps      []RoadmapStepResponse `json:"steps"`
-	NextAction *RoadmapStepResponse  `json:"next_action,omitempty"`
+	ID                  int64                        `json:"id"`
+	GoalID              int64                        `json:"goal_id"`
+	Status              string                       `json:"status"`
+	Steps               []RoadmapStepResponse        `json:"steps"`
+	NextAction          *RoadmapStepResponse         `json:"next_action,omitempty"`
+	EnrollmentChoice    *EnrollmentChoiceResponse    `json:"enrollment_choice,omitempty"`
+	EmployerApplication *EmployerApplicationResponse `json:"employer_application,omitempty"`
 }
 
 // CreateRoadmapRequest создаёт общий roadmap для уже подтверждённой цели.
@@ -60,4 +62,10 @@ type CompanyOpportunityResponse struct {
 	URL          string `json:"url,omitempty"`
 	MinStudyYear int16  `json:"min_study_year"`
 	IsAvailable  bool   `json:"is_available"`
+}
+
+// EmployerApplicationResponse подтверждает отправку заявки работодателю.
+type EmployerApplicationResponse struct {
+	CompanyOpportunityID int64  `json:"company_opportunity_id"`
+	Status               string `json:"status"`
 }

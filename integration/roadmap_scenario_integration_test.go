@@ -151,26 +151,40 @@ func testSmallSurveyScenarioCreatesRoadmap(t *testing.T) {
 	if len(roadmap.Steps) == 0 || roadmap.NextAction == nil {
 		t.Fatal("roadmap must contain steps and a next action")
 	}
-	if roadmap.Steps[0].Status != models.RoadmapStepStatusActive {
-		t.Fatalf("first roadmap step status = %q, want %q", roadmap.Steps[0].Status, models.RoadmapStepStatusActive)
+	resumedRoadmap, err := roadmapService.GetActiveRoadmap(ctx, scenarioUserID)
+	if err != nil {
+		t.Fatalf("resume active roadmap: %v", err)
 	}
-
-	var persistedGoal models.UserGoal
-	if err := tx.Preload("CareerDirection.Company").First(&persistedGoal, "id = ?", goal.ID).Error; err != nil {
-		t.Fatalf("load persisted goal: %v", err)
+	if resumedRoadmap.ID != roadmap.ID || resumedRoadmap.NextAction == nil || resumedRoadmap.NextAction.StepType != models.RoadmapStepTypeChooseOrConfirmExams {
+		t.Fatalf("unexpected resumed roadmap: %#v", resumedRoadmap)
 	}
-	if persistedGoal.CareerDirection.Company.Name != "Т1" || persistedGoal.CareerDirection.Name != direction.Name {
-		t.Fatalf("persisted goal does not match selected trajectory")
+	if err := roadmapService.RestartActiveRoadmap(ctx, scenarioUserID); err != nil {
+		t.Fatalf("restart active roadmap: %v", err)
 	}
-
-	var activeRoadmaps int64
-	if err := tx.Model(&models.Roadmap{}).
-		Where("user_goal_id = ? AND status = ?", goal.ID, models.RoadmapStatusActive).
-		Count(&activeRoadmaps).Error; err != nil {
-		t.Fatalf("count active roadmaps: %v", err)
+	if _, err := roadmapService.GetActiveRoadmap(ctx, scenarioUserID); err == nil {
+		t.Fatal("no active roadmap must remain after restart")
 	}
-	if activeRoadmaps != 1 {
-		t.Fatalf("active roadmaps = %d, want 1", activeRoadmaps)
+	if _, err := roadmapService.GetRoadmap(ctx, scenarioUserID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID}); err == nil {
+		t.Fatal("roadmap must be deleted after restart")
+	}
+	for name, model := range map[string]any{
+		"profile":  &models.UserProfile{},
+		"subjects": &models.UserSubject{},
+		"goals":    &models.UserGoal{},
+		"roadmaps": &models.Roadmap{},
+	} {
+		var count int64
+		query := tx.Model(model)
+		if name == "profile" {
+			query = query.Where("id = ?", scenarioUserID)
+		} else if name == "roadmaps" {
+			query = query.Joins("JOIN user_goals ON user_goals.id = roadmaps.user_goal_id").Where("user_goals.user_profile_id = ?", scenarioUserID)
+		} else {
+			query = query.Where("user_profile_id = ?", scenarioUserID)
+		}
+		if err := query.Count(&count).Error; err != nil || count != 0 {
+			t.Fatalf("%s must be deleted after restart: count=%d err=%v", name, count, err)
+		}
 	}
 }
 
@@ -185,6 +199,51 @@ func TestSmallSurveyScenarioForNinthGrade(t *testing.T) {
 // а план подачи — последние опубликованные лимиты кампании.
 func TestAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 	runScenario(t, "будущее поступление: последние правила → вуз → зачисление → работодатель", testAdmissionScenarioUsesLatestPublishedRules)
+}
+
+func TestEnrollmentLifecycleRestartsOrReachesEmployer(t *testing.T) {
+	runScenario(t, "приёмная кампания: не поступил → новый опрос; поступил → курс → заявка работодателю", testEnrollmentLifecycleRestartsOrReachesEmployer)
+}
+
+func testEnrollmentLifecycleRestartsOrReachesEmployer(t *testing.T) {
+	db := openScenarioDatabase(t)
+	tx := beginScenarioTransaction(t, db)
+	profileStore := repositories.NewGormProfileRepository(tx)
+	careerStore := repositories.NewGormCareerRepository(tx)
+	educationStore := repositories.NewGormEducationRepository(tx)
+	roadmapStore := repositories.NewGormRoadmapRepository(tx)
+	profileService := services.NewProfileService(profileStore)
+	trajectoryService := services.NewTrajectoryService(careerStore, educationStore, profileStore, roadmapStore)
+	roadmapService := services.NewRoadmapService(roadmapStore, careerStore)
+	admissionService := services.NewAdmissionService(educationStore, profileStore, roadmapStore, careerStore)
+	ctx := context.Background()
+	userID := scenarioUserID + 30
+	regionID := regionIDByName(t, db, "Пермский край")
+	if _, err := profileService.SaveProfile(ctx, userID, dto.UpsertProfileRequest{Grade: 11, RegionID: regionID}); err != nil {
+		t.Fatalf("save profile: %v", err)
+	}
+	company := companyByName(t, trajectoryService, ctx, "Т1")
+	if _, err := trajectoryService.SelectCompany(ctx, userID, dto.SelectCompanyRequest{CompanyID: company.ID}); err != nil {
+		t.Fatalf("select company: %v", err)
+	}
+	direction := directionByName(t, mustDirections(t, trajectoryService, ctx, userID, company.ID), "Разработчик программного обеспечения")
+	if _, err := profileService.SaveUserSubjects(ctx, userID, dto.SaveUserSubjectsRequest{Subjects: selectedExamInputs(t, db, 100)}); err != nil {
+		t.Fatalf("save EGE: %v", err)
+	}
+	goal, err := trajectoryService.ConfirmGoal(ctx, userID, dto.ConfirmGoalRequest{CareerDirectionID: direction.ID, TargetAdmissionYear: 2026})
+	if err != nil {
+		t.Fatalf("confirm goal: %v", err)
+	}
+	roadmap, err := roadmapService.CreateRoadmap(ctx, userID, dto.CreateRoadmapRequest{GoalID: goal.ID})
+	if err != nil {
+		t.Fatalf("create roadmap: %v", err)
+	}
+	if _, err := admissionService.SaveEnrollmentChoice(ctx, userID, dto.GetAdmissionPlanRequest{RoadmapID: roadmap.ID}, dto.SaveEnrollmentChoiceRequest{Status: models.EnrollmentStatusNotEnrolled}); err != nil {
+		t.Fatalf("save no-enrollment result: %v", err)
+	}
+	if _, err := roadmapService.GetActiveRoadmap(ctx, userID); err == nil {
+		t.Fatal("roadmap must be archived after no-enrollment result")
+	}
 }
 
 func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
@@ -253,9 +312,12 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 	if err != nil || len(options) == 0 {
 		t.Fatalf("find education options: %v; options=%d", err, len(options))
 	}
+	if len(options) < 2 {
+		t.Fatalf("education options = %d, want at least two programs for admission-plan test", len(options))
+	}
 	option := options[0]
-	if option.AdmissionYear != targetAdmissionYear || option.RulesSourceYear != 2026 {
-		t.Fatalf("education option years = target %d / rules %d, want %d / 2026", option.AdmissionYear, option.RulesSourceYear, targetAdmissionYear)
+	if option.AdmissionYear != 2026 || option.RulesSourceYear != 2026 {
+		t.Fatalf("education option years = admission %d / rules %d, want 2026 / 2026", option.AdmissionYear, option.RulesSourceYear)
 	}
 	if option.PassingScoreSourceYear == nil || *option.PassingScoreSourceYear != 2025 {
 		t.Fatalf("passing-score source year = %v, want 2025", option.PassingScoreSourceYear)
@@ -265,20 +327,71 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get admission plan limits: %v", err)
 	}
-	if limits.AdmissionYear != targetAdmissionYear || limits.RulesSourceYear != 2026 || limits.MaxUniversities != 5 || limits.MaxProgramsPerUniversity != 5 {
+	if limits.AdmissionYear != 2026 || limits.RulesSourceYear != 2026 || limits.MaxUniversities != 5 || limits.MaxProgramsPerUniversity != 5 {
 		t.Fatalf("unexpected plan limits: %#v", limits)
 	}
-	applications, err := admissionService.SaveAdmissionPlan(ctx, userID, dto.GetAdmissionPlanRequest{RoadmapID: roadmap.ID}, dto.SaveAdmissionPlanRequest{Applications: []dto.AdmissionPlanItemInput{{EducationProgramID: option.EducationProgramID}}})
-	if err != nil || len(applications) != 1 {
+	applications, err := admissionService.SaveAdmissionPlan(ctx, userID, dto.GetAdmissionPlanRequest{RoadmapID: roadmap.ID}, dto.SaveAdmissionPlanRequest{Applications: []dto.AdmissionPlanItemInput{
+		{EducationProgramID: option.EducationProgramID},
+		{EducationProgramID: options[1].EducationProgramID},
+	}})
+	if err != nil || len(applications) != 2 {
 		t.Fatalf("save admission plan: %v; applications=%d", err, len(applications))
 	}
-	applicationID := applications[0].ID
+	savedPlan, err := admissionService.GetAdmissionPlan(ctx, userID, dto.GetAdmissionPlanRequest{RoadmapID: roadmap.ID})
+	if err != nil || len(savedPlan) != 2 {
+		t.Fatalf("get saved admission plan: %v; applications=%d", err, len(savedPlan))
+	}
+	if _, err := roadmapService.GetEmployerOpportunity(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID}); err == nil {
+		t.Fatal("employer opportunity must not be available before final enrollment choice")
+	}
+	applicationID := applications[1].ID
 	if _, err := admissionService.SaveEnrollmentChoice(ctx, userID, dto.GetAdmissionPlanRequest{RoadmapID: roadmap.ID}, dto.SaveEnrollmentChoiceRequest{Status: models.EnrollmentStatusChosen, AdmissionApplicationID: &applicationID}); err != nil {
 		t.Fatalf("save enrollment choice: %v", err)
+	}
+	roadmapAfterEnrollment, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
+	if err != nil || roadmapAfterEnrollment.EnrollmentChoice == nil || roadmapAfterEnrollment.EnrollmentChoice.AdmissionApplicationID == nil || *roadmapAfterEnrollment.EnrollmentChoice.AdmissionApplicationID != applicationID {
+		t.Fatalf("roadmap must retain final enrollment choice: %v; choice=%#v", err, roadmapAfterEnrollment.EnrollmentChoice)
+	}
+	for index := 0; index < 5; index++ {
+		current, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
+		if err != nil || current.NextAction == nil {
+			t.Fatalf("get pre-enrollment step %d: %v; roadmap=%#v", index, err, current)
+		}
+		if _, err := roadmapService.UpdateRoadmapStep(ctx, userID, dto.GetRoadmapStepRequest{RoadmapID: roadmap.ID, StepID: current.NextAction.ID}, dto.UpdateRoadmapStepRequest{Status: models.RoadmapStepStatusCompleted}); err != nil {
+			t.Fatalf("complete pre-enrollment step %d: %v", index, err)
+		}
+	}
+	confirmEnrollment, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
+	if err != nil || confirmEnrollment.NextAction == nil || confirmEnrollment.NextAction.StepType != models.RoadmapStepTypeConfirmEnrollment {
+		t.Fatalf("next step must be enrollment confirmation: %v; roadmap=%#v", err, confirmEnrollment)
+	}
+	if _, err := roadmapService.UpdateRoadmapStep(ctx, userID, dto.GetRoadmapStepRequest{RoadmapID: roadmap.ID, StepID: confirmEnrollment.NextAction.ID}, dto.UpdateRoadmapStepRequest{Status: models.RoadmapStepStatusCompleted}); err != nil {
+		t.Fatalf("complete enrollment confirmation: %v", err)
+	}
+	learningRoadmap, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
+	if err != nil || learningRoadmap.NextAction == nil || learningRoadmap.NextAction.StepType != models.RoadmapStepTypeLearnAtUniversity {
+		t.Fatalf("next step must be learning: %v; roadmap=%#v", err, learningRoadmap)
 	}
 	opportunity, err := roadmapService.GetEmployerOpportunity(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
 	if err != nil || !opportunity.IsAvailable || opportunity.Name == "" {
 		t.Fatalf("get employer opportunity: %v; opportunity=%#v", err, opportunity)
+	}
+	for index := 0; index < 2; index++ {
+		current, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
+		if err != nil || current.NextAction == nil {
+			t.Fatalf("get current roadmap step %d: %v; roadmap=%#v", index, err, current)
+		}
+		if _, err := roadmapService.UpdateRoadmapStep(ctx, userID, dto.GetRoadmapStepRequest{RoadmapID: roadmap.ID, StepID: current.NextAction.ID}, dto.UpdateRoadmapStepRequest{Status: models.RoadmapStepStatusCompleted}); err != nil {
+			t.Fatalf("complete roadmap step %d: %v", index, err)
+		}
+	}
+	application, err := roadmapService.SubmitEmployerApplication(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
+	if err != nil || application.CompanyOpportunityID != opportunity.ID || application.Status != "submitted" {
+		t.Fatalf("submit employer application: %v; application=%#v", err, application)
+	}
+	finalRoadmap, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
+	if err != nil || finalRoadmap.EmployerApplication == nil || finalRoadmap.EmployerApplication.Status != "submitted" {
+		t.Fatalf("employer application must persist in roadmap: %v; roadmap=%#v", err, finalRoadmap)
 	}
 }
 
@@ -297,6 +410,12 @@ func testSmallSurveyScenarioForNinthGrade(t *testing.T) {
 	db := openScenarioDatabase(t)
 	tx := beginScenarioTransaction(t, db)
 	profileService, trajectoryService, roadmapService := scenarioServices(tx)
+	admissionService := services.NewAdmissionService(
+		repositories.NewGormEducationRepository(tx),
+		repositories.NewGormProfileRepository(tx),
+		repositories.NewGormRoadmapRepository(tx),
+		repositories.NewGormCareerRepository(tx),
+	)
 	ctx := context.Background()
 	userID := scenarioUserID + 1
 
@@ -338,6 +457,17 @@ func testSmallSurveyScenarioForNinthGrade(t *testing.T) {
 	}
 	if len(roadmap.Steps) == 0 || roadmap.NextAction == nil {
 		t.Fatal("ninth-grade roadmap must contain steps and next action")
+	}
+	results := make([]dto.ExamResultInput, 0, len(examSets[0].ExamSubjectIDs))
+	for _, subjectID := range examSets[0].ExamSubjectIDs {
+		results = append(results, dto.ExamResultInput{ExamSubjectID: subjectID, ActualScore: 100})
+	}
+	if _, err := profileService.SaveExamResults(ctx, userID, dto.SaveExamResultsRequest{Results: results}); err != nil {
+		t.Fatalf("save results for suggested EGE set: %v", err)
+	}
+	options, err := admissionService.FindEducationOptions(ctx, userID, dto.FindEducationOptionsRequest{RoadmapID: roadmap.ID, ExpandGeography: true})
+	if err != nil || len(options) == 0 {
+		t.Fatalf("suggested EGE set must produce education options after results: %v; options=%d", err, len(options))
 	}
 }
 

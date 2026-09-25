@@ -28,14 +28,14 @@ func handleBigSurveyMessage(ctx maxbot.Context) error {
 	case models.UserStateBigSurveyWaitingGrade:
 		grade, err := strconv.ParseInt(text, 10, 16)
 		if err != nil || grade < 9 || grade > 11 {
-			return ctx.Send("Введите 9, 10 или 11.")
+			return resendBigGrade(ctx, "Введите 9, 10 или 11.")
 		}
 		s.Grade = int16(grade)
 		return showBigRegions(ctx)
 	case models.UserStateBigSurveyWaitingRegion:
 		index, ok := choice(text, len(s.RegionIDs))
 		if !ok {
-			return ctx.Send("Выберите номер региона с клавиатуры.")
+			return resendBigRegions(ctx, "Выберите номер региона с клавиатуры.")
 		}
 		s.RegionID = s.RegionIDs[index]
 		utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingRelocation)
@@ -44,7 +44,7 @@ func handleBigSurveyMessage(ctx maxbot.Context) error {
 		return ctx.Send("3. Готовы рассмотреть обучение в другом регионе?", maxbot.WithKeyboard(keyboard))
 	case models.UserStateBigSurveyWaitingRelocation:
 		if text != "Да" && text != "Нет" {
-			return ctx.Send("Выберите «Да» или «Нет».")
+			return resendBigRelocation(ctx, "Выберите «Да» или «Нет».")
 		}
 		s.WillingToRelocate = text == "Да"
 		if _, err := app.Profile.SaveProfile(context.Background(), id, dto.UpsertProfileRequest{Grade: s.Grade, RegionID: s.RegionID, WillingToRelocate: s.WillingToRelocate}); err != nil {
@@ -64,12 +64,12 @@ func handleBigSurveyMessage(ctx maxbot.Context) error {
 		if text == "Нет" {
 			return showFullSurveyActivities(ctx)
 		}
-		return ctx.Send("Выберите «Да» или «Нет».")
+		return resendBigExamSelection(ctx, "Выберите «Да» или «Нет».")
 	case models.UserStateBigSurveyWaitingExamSubject:
-		return ctx.Send("Выберите предметы ЕГЭ кнопками ниже и нажмите «Готово».")
+		return resendExamSubjects(ctx, "Выберите предметы ЕГЭ кнопками ниже и нажмите «Готово».")
 	case models.UserStateBigSurveyWaitingExamScore:
 		if !collectExamScore(s, text) {
-			return ctx.Send("Введите число от 0 до 100 или нажмите «Пропустить».")
+			return resendExamScore(ctx, "Введите число от 0 до 100 или нажмите «Пропустить».")
 		}
 		if s.ExamScoreStep < len(s.SelectedExamIDs) {
 			text, keyboard := examScoreQuestion(s)
@@ -82,16 +82,16 @@ func handleBigSurveyMessage(ctx maxbot.Context) error {
 	case models.UserStateBigSurveyWaitingInterest:
 		index, ok := choice(text, len(s.ActivityTagIDs))
 		if !ok {
-			return ctx.Send("Выберите номер интереса с клавиатуры.")
+			return resendBigActivities(ctx, "Выберите номер интереса с клавиатуры.")
 		}
 		s.SelectedActivityTagIDs = []int64{s.ActivityTagIDs[index]}
 		return showFullSurveySchoolSubjects(ctx)
 	case models.UserStateBigSurveyWaitingSubjects:
-		return ctx.Send("Выберите школьные предметы кнопками ниже и нажмите «Готово».")
+		return resendSchoolSubjects(ctx, "Выберите школьные предметы кнопками ниже и нажмите «Готово».")
 	case models.UserStateBigSurveyWaitingCompany:
 		index, ok := choice(text, len(s.CompanyIDs))
 		if !ok {
-			return ctx.Send("Выберите номер компании с клавиатуры.")
+			return resendRecommendedCompanies(ctx, "Выберите номер компании с клавиатуры.")
 		}
 		s.CompanyID = s.CompanyIDs[index]
 		company, err := app.Trajectory.SelectCompany(context.Background(), id, dto.SelectCompanyRequest{CompanyID: s.CompanyID})
@@ -103,7 +103,7 @@ func handleBigSurveyMessage(ctx maxbot.Context) error {
 	case models.UserStateBigSurveyWaitingDirection:
 		index, ok := choice(text, len(s.DirectionIDs))
 		if !ok {
-			return ctx.Send("Выберите номер направления.")
+			return resendBigDirections(ctx, "Выберите номер направления.")
 		}
 		s.CareerDirectionID = s.DirectionIDs[index]
 		s.CareerDirectionName = s.DirectionNames[index]
@@ -114,7 +114,7 @@ func handleBigSurveyMessage(ctx maxbot.Context) error {
 	case models.UserStateBigSurveyWaitingExamSet:
 		index, ok := choice(text, len(s.ExamSets))
 		if !ok {
-			return ctx.Send("Выберите номер набора ЕГЭ.")
+			return resendBigExamSets(ctx, "Выберите номер набора ЕГЭ.")
 		}
 		inputs := make([]dto.UserSubjectInput, 0, len(s.ExamSets[index]))
 		for _, subjectID := range s.ExamSets[index] {
@@ -131,7 +131,10 @@ func handleBigSurveyMessage(ctx maxbot.Context) error {
 			return showBigDirections(ctx)
 		}
 		if text != "Подтвердить" {
-			return ctx.Send("Выберите «Подтвердить» или «Изменить направление».")
+			if err := ctx.Send("Выберите «Подтвердить» или «Изменить направление»."); err != nil {
+				return err
+			}
+			return showGoalConfirmation(ctx, models.UserStateBigSurveyWaitingGoalConfirmation)
 		}
 		goal, err := app.Trajectory.ConfirmGoal(context.Background(), id, dto.ConfirmGoalRequest{CareerDirectionID: s.CareerDirectionID, TargetAdmissionYear: admissionYear(s.Grade)})
 		if err != nil {
@@ -162,6 +165,90 @@ func showBigRegions(ctx maxbot.Context) error {
 	}
 	utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingRegion)
 	return ctx.Send("2. Выберите регион:", maxbot.WithKeyboard(keyboard))
+}
+
+func resendBigGrade(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	return ctx.Send("1. Выберите класс:", maxbot.WithKeyboard(gradeKeyboard()))
+}
+
+func resendBigRegions(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	return showBigRegions(ctx)
+}
+
+func resendBigRelocation(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	kb := model.NewKeyboard()
+	kb.AddRow().AddMessage("Да").AddMessage("Нет")
+	return ctx.Send("3. Готовы рассмотреть обучение в другом регионе?", maxbot.WithKeyboard(kb))
+}
+
+func resendBigExamSelection(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	kb := model.NewKeyboard()
+	kb.AddRow().AddMessage("Да").AddMessage("Нет")
+	return ctx.Send("4. Вы уже выбрали предметы ЕГЭ?", maxbot.WithKeyboard(kb))
+}
+
+func resendBigActivities(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	return showFullSurveyActivities(ctx)
+}
+
+func resendSchoolSubjects(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	text, kb := schoolSubjectsQuestion(utils.GetSmallSurvey(ctx.Update().UserID))
+	return ctx.Send(text, maxbot.WithKeyboard(kb))
+}
+
+func resendExamSubjects(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	text, kb := examSubjectsQuestion(utils.GetSmallSurvey(ctx.Update().UserID))
+	return ctx.Send(text, maxbot.WithKeyboard(kb))
+}
+
+func resendExamScore(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	text, kb := examScoreQuestion(utils.GetSmallSurvey(ctx.Update().UserID))
+	return ctx.Send(text, maxbot.WithKeyboard(kb))
+}
+
+func resendRecommendedCompanies(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	return showRecommendedCompanies(ctx)
+}
+
+func resendBigDirections(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	return showBigDirections(ctx)
+}
+
+func resendBigExamSets(ctx maxbot.Context, message string) error {
+	if err := ctx.Send(message); err != nil {
+		return err
+	}
+	return showBigRecommendedExamSets(ctx)
 }
 
 func showFullSurveyActivities(ctx maxbot.Context) error {
@@ -308,7 +395,11 @@ func SubjectsDone(ctx maxbot.Context) error {
 	}
 	s := utils.GetSmallSurvey(id)
 	if len(s.SelectedSchoolSubjectIDs) == 0 {
-		return ctx.Answer("Выберите хотя бы один предмет.")
+		if err := ctx.Send("Выберите хотя бы один предмет."); err != nil {
+			return err
+		}
+		text, keyboard := schoolSubjectsQuestion(s)
+		return ctx.Edit(text, maxbot.WithKeyboard(keyboard))
 	}
 	if err := saveFullSurveyInterests(ctx); err != nil {
 		return ctx.Answer("Не удалось сохранить интересы опроса.")
@@ -397,6 +488,13 @@ func ExamSubjectsDone(ctx maxbot.Context) error {
 	state := utils.GetUserState(id)
 	var nextState models.UserState
 	s := utils.GetSmallSurvey(id)
+	if len(s.SelectedExamIDs) == 0 {
+		if err := ctx.Send("Выберите хотя бы один предмет."); err != nil {
+			return err
+		}
+		text, keyboard := examSubjectsQuestion(s)
+		return ctx.Edit(text, maxbot.WithKeyboard(keyboard))
+	}
 	switch state {
 	case models.UserStateSmallSurveyWaitingExamSubject:
 		nextState = models.UserStateSmallSurveyWaitingExamScore
@@ -418,9 +516,6 @@ func ExamSubjectsDone(ctx maxbot.Context) error {
 		return showRoadmapExamChoice(ctx)
 	default:
 		return ctx.Answer("Этот выбор уже завершён. Начните заново командой /start.")
-	}
-	if len(s.SelectedExamIDs) == 0 {
-		return ctx.Answer("Выберите хотя бы один предмет.")
 	}
 	s.SelectedExamScores = make(map[int64]*int16)
 	s.ExamScoreStep = 0

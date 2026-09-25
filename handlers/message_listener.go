@@ -16,6 +16,9 @@ func GlobalMessageListener(ctx maxbot.Context) error {
 		utils.UpdateUserStateStorage(userID, UserStateStart)
 		return CallMenu(ctx)
 	}
+	if strings.TrimSpace(ctx.Update().Message.Body.Text) == "/restart" {
+		return RestartScenario(ctx)
+	}
 
 	userState := utils.GetUserState(userID)
 	if strings.HasPrefix(string(userState), "small_survey_") {

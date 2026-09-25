@@ -20,12 +20,12 @@ func NewGormEducationRepository(db *gorm.DB) *GormEducationRepository {
 	return &GormEducationRepository{db: db}
 }
 
-func (r *GormEducationRepository) ListLatestExamCombinationsForDirection(ctx context.Context, careerDirectionID int64, asOfYear int16) ([]models.ExamCombination, error) {
+func (r *GormEducationRepository) ListLatestExamCombinationsForDirection(ctx context.Context, careerDirectionID int64) ([]models.ExamCombination, error) {
 	var combinations []models.ExamCombination
 	latestYear := r.db.Model(&models.ExamCombination{}).
 		Select("MAX(exam_combinations.admission_year)").
 		Joins("JOIN career_direction_education_programs AS cdep ON cdep.education_program_id = exam_combinations.education_program_id").
-		Where("cdep.career_direction_id = ? AND exam_combinations.admission_year <= ?", careerDirectionID, asOfYear)
+		Where("cdep.career_direction_id = ?", careerDirectionID)
 	err := r.db.WithContext(ctx).
 		Joins("JOIN career_direction_education_programs AS cdep ON cdep.education_program_id = exam_combinations.education_program_id").
 		Where("cdep.career_direction_id = ? AND exam_combinations.admission_year = (?)", careerDirectionID, latestYear).
@@ -47,8 +47,7 @@ func (r *GormEducationRepository) ListEducationOptions(ctx context.Context, filt
 			SELECT MAX(ec_latest.admission_year)
 			FROM exam_combinations AS ec_latest
 			WHERE ec_latest.education_program_id = education_programs.id
-				AND ec_latest.admission_year <= ?
-		)`, filter.AdmissionYear)
+		)`)
 
 	if !filter.ExpandGeography {
 		optionsQuery = optionsQuery.Where("universities.region_id = ?", filter.RegionID)
@@ -59,12 +58,21 @@ func (r *GormEducationRepository) ListEducationOptions(ctx context.Context, filt
 			filter.ExamSubjectIDs,
 		)
 	}
+	if filter.RequireEmployerOpportunity {
+		optionsQuery = optionsQuery.Where(`EXISTS (
+			SELECT 1 FROM company_opportunities AS co
+			WHERE co.company_id = ?
+				AND co.career_direction_id = ?
+				AND co.is_active = true
+				AND (co.region_id IS NULL OR co.region_id = universities.region_id)
+		)`, filter.CompanyID, filter.CareerDirectionID)
+	}
 
 	var programs []models.EducationProgram
 	err := optionsQuery.
 		Distinct("education_programs.*").
 		Preload("University.Region").
-		Preload("ExamCombinations", "admission_year <= ?", filter.AdmissionYear).
+		Preload("ExamCombinations").
 		Preload("ExamCombinations.Items.ExamSubject").
 		Preload("AdmissionScores").
 		Order("education_programs.name ASC").
@@ -72,7 +80,7 @@ func (r *GormEducationRepository) ListEducationOptions(ctx context.Context, filt
 	return programs, err
 }
 
-func (r *GormEducationRepository) ListDirectionIDsAvailableForSubjects(ctx context.Context, companyID int64, examSubjectIDs []int64, admissionYear int16) ([]int64, error) {
+func (r *GormEducationRepository) ListDirectionIDsAvailableForSubjects(ctx context.Context, companyID int64, examSubjectIDs []int64) ([]int64, error) {
 	if len(examSubjectIDs) == 0 {
 		return []int64{}, nil
 	}
@@ -83,7 +91,7 @@ func (r *GormEducationRepository) ListDirectionIDsAvailableForSubjects(ctx conte
 		Select("DISTINCT cd.id").
 		Joins("JOIN career_direction_education_programs AS cdep ON cdep.career_direction_id = cd.id").
 		Joins("JOIN exam_combinations AS ec ON ec.education_program_id = cdep.education_program_id").
-		Where("cd.company_id = ? AND ec.admission_year = ?", companyID, admissionYear).
+		Where("cd.company_id = ? AND ec.admission_year = (SELECT MAX(ec_latest.admission_year) FROM exam_combinations AS ec_latest WHERE ec_latest.education_program_id = ec.education_program_id)", companyID).
 		Where(
 			"NOT EXISTS (SELECT 1 FROM exam_combination_items AS eci WHERE eci.exam_combination_id = ec.id AND eci.exam_subject_id NOT IN ?)",
 			examSubjectIDs,
@@ -93,10 +101,9 @@ func (r *GormEducationRepository) ListDirectionIDsAvailableForSubjects(ctx conte
 	return directionIDs, err
 }
 
-func (r *GormEducationRepository) GetLatestAdmissionCampaignRule(ctx context.Context, admissionYear int16) (models.AdmissionCampaignRule, error) {
+func (r *GormEducationRepository) GetLatestAdmissionCampaignRule(ctx context.Context) (models.AdmissionCampaignRule, error) {
 	var rule models.AdmissionCampaignRule
 	err := r.db.WithContext(ctx).
-		Where("admission_year <= ?", admissionYear).
 		Order("admission_year DESC").
 		First(&rule).Error
 	return rule, err

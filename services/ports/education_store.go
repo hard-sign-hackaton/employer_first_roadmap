@@ -8,21 +8,21 @@ import (
 
 // EducationOptionsFilter описывает параметры выборки вариантов поступления.
 type EducationOptionsFilter struct {
-	CareerDirectionID int64
-	AdmissionYear     int16
-	ExamSubjectIDs    []int64
-	RegionID          int64
-	ExpandGeography   bool
+	CareerDirectionID          int64
+	CompanyID                  int64
+	ExamSubjectIDs             []int64
+	RegionID                   int64
+	ExpandGeography            bool
+	RequireEmployerOpportunity bool
 }
 
 // EducationStore предоставляет сервисам данные об ОП, ЕГЭ и приёмной кампании.
 type EducationStore interface {
-	// ListLatestExamCombinationsForDirection возвращает правила самой свежей
-	// опубликованной приёмной кампании, доступной на дату запроса.
-	ListLatestExamCombinationsForDirection(ctx context.Context, careerDirectionID int64, asOfYear int16) ([]models.ExamCombination, error)
+	// ListLatestExamCombinationsForDirection возвращает последний опубликованный
+	// срез комбинаций ЕГЭ, имеющийся в каталоге.
+	ListLatestExamCombinationsForDirection(ctx context.Context, careerDirectionID int64) ([]models.ExamCombination, error)
 	ListEducationOptions(ctx context.Context, filter EducationOptionsFilter) ([]models.EducationProgram, error)
-	ListDirectionIDsAvailableForSubjects(ctx context.Context, companyID int64, examSubjectIDs []int64, admissionYear int16) ([]int64, error)
-	// GetLatestAdmissionCampaignRule возвращает последнее опубликованное правило,
-	// действовавшее не позднее целевого года поступления.
-	GetLatestAdmissionCampaignRule(ctx context.Context, admissionYear int16) (models.AdmissionCampaignRule, error)
+	ListDirectionIDsAvailableForSubjects(ctx context.Context, companyID int64, examSubjectIDs []int64) ([]int64, error)
+	// GetLatestAdmissionCampaignRule возвращает последнее правило из каталога.
+	GetLatestAdmissionCampaignRule(ctx context.Context) (models.AdmissionCampaignRule, error)
 }

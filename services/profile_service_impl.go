@@ -69,6 +69,13 @@ func (s *profileService) SaveUserSubjects(ctx context.Context, userID int64, req
 	}
 	return subjectResponses(items), nil
 }
+func (s *profileService) GetUserSubjects(ctx context.Context, userID int64) ([]dto.UserSubjectResponse, error) {
+	items, err := s.store.ListUserSubjects(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return subjectResponses(items), nil
+}
 func (s *profileService) SaveExamResults(ctx context.Context, userID int64, request dto.SaveExamResultsRequest) ([]dto.UserSubjectResponse, error) {
 	if len(request.Results) == 0 {
 		return nil, fmt.Errorf("no exam results provided")

@@ -203,7 +203,7 @@ func (s *trajectoryService) GetRecommendedExamSets(ctx context.Context, request 
 	if _, err := s.careers.FindCareerDirectionByID(ctx, request.CareerDirectionID); err != nil {
 		return nil, fmt.Errorf("find career direction: %w", err)
 	}
-	combinations, err := s.education.ListLatestExamCombinationsForDirection(ctx, request.CareerDirectionID, int16(time.Now().Year()))
+	combinations, err := s.education.ListLatestExamCombinationsForDirection(ctx, request.CareerDirectionID)
 	if err != nil {
 		return nil, fmt.Errorf("list exam combinations: %w", err)
 	}
@@ -319,7 +319,7 @@ func (s *trajectoryService) selectedSubjects(ctx context.Context, userID int64) 
 func (s *trajectoryService) filterCompatibleDirections(ctx context.Context, directions []models.CareerDirection, subjects []models.UserSubject) ([]models.CareerDirection, error) {
 	result := make([]models.CareerDirection, 0, len(directions))
 	for _, direction := range directions {
-		combinations, err := s.education.ListLatestExamCombinationsForDirection(ctx, direction.ID, int16(time.Now().Year()))
+		combinations, err := s.education.ListLatestExamCombinationsForDirection(ctx, direction.ID)
 		if err != nil {
 			return nil, err
 		}

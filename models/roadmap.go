@@ -54,6 +54,7 @@ type Roadmap struct {
 	Steps                 []RoadmapStep                 `json:"steps" gorm:"foreignKey:RoadmapID"`
 	AdmissionApplications []RoadmapAdmissionApplication `json:"admission_applications" gorm:"foreignKey:RoadmapID"`
 	EnrollmentChoice      *RoadmapEnrollmentChoice      `json:"enrollment_choice" gorm:"foreignKey:RoadmapID"`
+	EmployerApplication   *RoadmapEmployerApplication   `json:"employer_application" gorm:"foreignKey:RoadmapID"`
 }
 
 // RoadmapStep — персональный снимок шага. Незавершённые шаги могут уточняться позднее.
@@ -95,4 +96,14 @@ type RoadmapEnrollmentChoice struct {
 	DecidedAt              time.Time `json:"decided_at"`
 
 	AdmissionApplication *RoadmapAdmissionApplication `json:"admission_application,omitempty" gorm:"foreignKey:AdmissionApplicationID"`
+}
+
+// RoadmapEmployerApplication — факт подачи заявки на выбранную возможность работодателя.
+type RoadmapEmployerApplication struct {
+	RoadmapID            int64     `json:"roadmap_id" gorm:"primaryKey"`
+	CompanyOpportunityID int64     `json:"company_opportunity_id" gorm:"not null"`
+	Status               string    `json:"status" gorm:"size:16;not null;check:status IN ('submitted')"`
+	SubmittedAt          time.Time `json:"submitted_at"`
+
+	CompanyOpportunity CompanyOpportunity `json:"company_opportunity" gorm:"foreignKey:CompanyOpportunityID"`
 }

@@ -24,6 +24,10 @@ type ProfileService interface {
 	// Вход: dto.SaveUserSubjectsRequest. Выход: список dto.UserSubjectResponse.
 	SaveUserSubjects(ctx context.Context, userID int64, request dto.SaveUserSubjectsRequest) ([]dto.UserSubjectResponse, error)
 
+	// GetUserSubjects возвращает сохранённые ЕГЭ, чтобы диалог roadmap можно было
+	// продолжить после перезапуска бота.
+	GetUserSubjects(ctx context.Context, userID int64) ([]dto.UserSubjectResponse, error)
+
 	// SaveExamResults фиксирует фактические баллы после сдачи ЕГЭ.
 	// Вход: dto.SaveExamResultsRequest. Выход: список dto.UserSubjectResponse со статусом passed.
 	SaveExamResults(ctx context.Context, userID int64, request dto.SaveExamResultsRequest) ([]dto.UserSubjectResponse, error)

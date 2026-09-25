@@ -107,6 +107,9 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 			completeNextRoadmapStep(ctx)
 			return showEmployerExperience(ctx)
 		}
+		if text == "Вернуться к roadmap" {
+			return showCurrentActiveRoadmap(ctx)
+		}
 		return resendLearningProgress(ctx, "Выберите действие с клавиатуры.")
 	case models.UserStateRoadmapEmployerExperience:
 		if text == "Практика завершена" {
@@ -271,7 +274,7 @@ func continueActiveRoadmap(ctx maxbot.Context) error {
 		return showEnrollmentChoice(ctx)
 	case models.RoadmapStepTypeLearnAtUniversity:
 		if roadmap.EnrollmentChoice == nil || roadmap.EnrollmentChoice.Status != models.EnrollmentStatusChosen {
-			return ctx.Send("Итог приёмной кампании не подтверждён. Вернитесь к выбору результата поступления.")
+			return resendEnrollmentChoice(ctx, "Итог приёмной кампании не подтверждён. Вернитесь к выбору результата поступления.")
 		}
 		return showLearningProgress(ctx)
 	case models.RoadmapStepTypeEmployerExperience:
@@ -710,7 +713,8 @@ func showLearningProgress(ctx maxbot.Context) error {
 		text += fmt.Sprintf("\n\nВ каталоге есть возможность работодателя: %s. Она доступна с %d курса.", opportunity.Name, opportunity.MinStudyYear)
 		kb.AddRow().AddMessage(startOpportunityAction(opportunity.Type))
 	} else {
-		text += "\n\nДля выбранной программы в каталоге пока нет возможности работодателя."
+		text += "\n\nДля выбранной компании, направления и региона вуза в каталоге пока нет возможности работодателя. Учебный этап остаётся активным до появления данных."
+		kb.AddRow().AddMessage("Вернуться к roadmap")
 	}
 	return ctx.Send(text, maxbot.WithKeyboard(kb))
 }

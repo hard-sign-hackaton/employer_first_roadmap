@@ -410,6 +410,12 @@ func testSmallSurveyScenarioForNinthGrade(t *testing.T) {
 	db := openScenarioDatabase(t)
 	tx := beginScenarioTransaction(t, db)
 	profileService, trajectoryService, roadmapService := scenarioServices(tx)
+	admissionService := services.NewAdmissionService(
+		repositories.NewGormEducationRepository(tx),
+		repositories.NewGormProfileRepository(tx),
+		repositories.NewGormRoadmapRepository(tx),
+		repositories.NewGormCareerRepository(tx),
+	)
 	ctx := context.Background()
 	userID := scenarioUserID + 1
 
@@ -426,7 +432,8 @@ func testSmallSurveyScenarioForNinthGrade(t *testing.T) {
 		t.Fatalf("get directions: %v", err)
 	}
 	direction := directionByName(t, directions, "Разработчик программного обеспечения")
-	examSets, err := trajectoryService.GetRecommendedExamSets(ctx, dto.GetRecommendedExamSetsRequest{CareerDirectionID: direction.ID})
+	targetYear := expectedTargetAdmissionYear(9, time.Now())
+	examSets, err := trajectoryService.GetRecommendedExamSets(ctx, dto.GetRecommendedExamSetsRequest{CareerDirectionID: direction.ID, TargetAdmissionYear: targetYear})
 	if err != nil || len(examSets) == 0 {
 		t.Fatalf("get EGE sets: %v; sets=%d", err, len(examSets))
 	}
@@ -437,7 +444,6 @@ func testSmallSurveyScenarioForNinthGrade(t *testing.T) {
 	if _, err := profileService.SaveUserSubjects(ctx, userID, dto.SaveUserSubjectsRequest{Subjects: inputs}); err != nil {
 		t.Fatalf("save planned EGE subjects: %v", err)
 	}
-	targetYear := expectedTargetAdmissionYear(9, time.Now())
 	goal, err := trajectoryService.ConfirmGoal(ctx, userID, dto.ConfirmGoalRequest{CareerDirectionID: direction.ID, TargetAdmissionYear: targetYear})
 	if err != nil {
 		t.Fatalf("confirm goal: %v", err)
@@ -451,6 +457,17 @@ func testSmallSurveyScenarioForNinthGrade(t *testing.T) {
 	}
 	if len(roadmap.Steps) == 0 || roadmap.NextAction == nil {
 		t.Fatal("ninth-grade roadmap must contain steps and next action")
+	}
+	results := make([]dto.ExamResultInput, 0, len(examSets[0].ExamSubjectIDs))
+	for _, subjectID := range examSets[0].ExamSubjectIDs {
+		results = append(results, dto.ExamResultInput{ExamSubjectID: subjectID, ActualScore: 100})
+	}
+	if _, err := profileService.SaveExamResults(ctx, userID, dto.SaveExamResultsRequest{Results: results}); err != nil {
+		t.Fatalf("save results for suggested EGE set: %v", err)
+	}
+	options, err := admissionService.FindEducationOptions(ctx, userID, dto.FindEducationOptionsRequest{RoadmapID: roadmap.ID, ExpandGeography: true})
+	if err != nil || len(options) == 0 {
+		t.Fatalf("suggested EGE set must produce education options after results: %v; options=%d", err, len(options))
 	}
 }
 

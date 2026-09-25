@@ -639,7 +639,7 @@ func showBigDirections(ctx maxbot.Context) error {
 func showBigRecommendedExamSets(ctx maxbot.Context) error {
 	id := ctx.Update().UserID
 	s := utils.GetSmallSurvey(id)
-	sets, err := app.Trajectory.GetRecommendedExamSets(context.Background(), dto.GetRecommendedExamSetsRequest{CareerDirectionID: s.CareerDirectionID, TargetAdmissionYear: admissionYear(s.Grade)})
+	sets, err := app.Trajectory.GetRecommendedExamSets(context.Background(), dto.GetRecommendedExamSetsRequest{CareerDirectionID: s.CareerDirectionID})
 	if err != nil {
 		return ctx.Send("Не удалось подобрать наборы ЕГЭ.")
 	}

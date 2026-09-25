@@ -432,8 +432,7 @@ func testSmallSurveyScenarioForNinthGrade(t *testing.T) {
 		t.Fatalf("get directions: %v", err)
 	}
 	direction := directionByName(t, directions, "Разработчик программного обеспечения")
-	targetYear := expectedTargetAdmissionYear(9, time.Now())
-	examSets, err := trajectoryService.GetRecommendedExamSets(ctx, dto.GetRecommendedExamSetsRequest{CareerDirectionID: direction.ID, TargetAdmissionYear: targetYear})
+	examSets, err := trajectoryService.GetRecommendedExamSets(ctx, dto.GetRecommendedExamSetsRequest{CareerDirectionID: direction.ID})
 	if err != nil || len(examSets) == 0 {
 		t.Fatalf("get EGE sets: %v; sets=%d", err, len(examSets))
 	}
@@ -444,6 +443,7 @@ func testSmallSurveyScenarioForNinthGrade(t *testing.T) {
 	if _, err := profileService.SaveUserSubjects(ctx, userID, dto.SaveUserSubjectsRequest{Subjects: inputs}); err != nil {
 		t.Fatalf("save planned EGE subjects: %v", err)
 	}
+	targetYear := expectedTargetAdmissionYear(9, time.Now())
 	goal, err := trajectoryService.ConfirmGoal(ctx, userID, dto.ConfirmGoalRequest{CareerDirectionID: direction.ID, TargetAdmissionYear: targetYear})
 	if err != nil {
 		t.Fatalf("confirm goal: %v", err)

@@ -60,10 +60,6 @@ type RecommendedExamSetResponse struct {
 // GetRecommendedExamSetsRequest запрашивает наборы ЕГЭ для выбранного карьерного направления.
 type GetRecommendedExamSetsRequest struct {
 	CareerDirectionID int64 `json:"career_direction_id"`
-	// TargetAdmissionYear keeps the suggested set aligned with the rules that
-	// will later be used to select education programmes. Zero retains the
-	// current-year behaviour for callers that do not yet know the target year.
-	TargetAdmissionYear int16 `json:"target_admission_year,omitempty"`
 }
 
 // ConfirmGoalRequest создаёт цель после выбора компании, направления и набора ЕГЭ.

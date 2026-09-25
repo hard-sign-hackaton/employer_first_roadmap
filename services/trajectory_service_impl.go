@@ -203,11 +203,7 @@ func (s *trajectoryService) GetRecommendedExamSets(ctx context.Context, request 
 	if _, err := s.careers.FindCareerDirectionByID(ctx, request.CareerDirectionID); err != nil {
 		return nil, fmt.Errorf("find career direction: %w", err)
 	}
-	asOfYear := request.TargetAdmissionYear
-	if asOfYear == 0 {
-		asOfYear = int16(time.Now().Year())
-	}
-	combinations, err := s.education.ListLatestExamCombinationsForDirection(ctx, request.CareerDirectionID, asOfYear)
+	combinations, err := s.education.ListLatestExamCombinationsForDirection(ctx, request.CareerDirectionID, int16(time.Now().Year()))
 	if err != nil {
 		return nil, fmt.Errorf("list exam combinations: %w", err)
 	}

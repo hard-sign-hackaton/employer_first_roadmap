@@ -74,12 +74,8 @@ func (s *roadmapService) GetActiveRoadmap(ctx context.Context, userID int64) (dt
 }
 
 func (s *roadmapService) RestartActiveRoadmap(ctx context.Context, userID int64) error {
-	roadmap, err := s.roadmaps.FindActiveRoadmapByUserID(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("find active roadmap: %w", err)
-	}
-	if _, err := s.roadmaps.ArchiveRoadmap(ctx, roadmap.ID); err != nil {
-		return fmt.Errorf("archive active roadmap: %w", err)
+	if err := s.roadmaps.ResetUserData(ctx, userID); err != nil {
+		return fmt.Errorf("reset user data: %w", err)
 	}
 	return nil
 }

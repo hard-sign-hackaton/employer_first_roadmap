@@ -238,6 +238,48 @@ func (r *GormRoadmapRepository) ArchiveRoadmap(ctx context.Context, roadmapID in
 	return r.findRoadmapDetails(ctx, roadmapID)
 }
 
+// ResetUserData удаляет только данные пользователя и его персональные сценарии.
+// Справочники компаний, вузов, правил приёма и шаблоны roadmap не затрагиваются.
+func (r *GormRoadmapRepository) ResetUserData(ctx context.Context, userID int64) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var roadmapIDs []int64
+		if err := tx.Model(&models.Roadmap{}).
+			Select("roadmaps.id").
+			Joins("JOIN user_goals ON user_goals.id = roadmaps.user_goal_id").
+			Where("user_goals.user_profile_id = ?", userID).
+			Find(&roadmapIDs).Error; err != nil {
+			return err
+		}
+		if len(roadmapIDs) > 0 {
+			if err := tx.Where("roadmap_id IN ?", roadmapIDs).Delete(&models.RoadmapEmployerApplication{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("roadmap_id IN ?", roadmapIDs).Delete(&models.RoadmapEnrollmentChoice{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("roadmap_id IN ?", roadmapIDs).Delete(&models.RoadmapAdmissionApplication{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("roadmap_id IN ?", roadmapIDs).Delete(&models.RoadmapStep{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("id IN ?", roadmapIDs).Delete(&models.Roadmap{}).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Where("user_profile_id = ?", userID).Delete(&models.UserGoal{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_profile_id = ?", userID).Delete(&models.UserInterest{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_profile_id = ?", userID).Delete(&models.UserSubject{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&models.UserProfile{}, "id = ?", userID).Error
+	})
+}
+
 func (r *GormRoadmapRepository) findRoadmapDetails(ctx context.Context, roadmapID int64) (models.Roadmap, error) {
 	var roadmap models.Roadmap
 	err := r.roadmapDetails(r.db.WithContext(ctx)).First(&roadmap, roadmapID).Error

@@ -18,13 +18,11 @@ func CreateUser(ctx maxbot.Context) error {
 	return CallMenu(ctx)
 }
 
-// RestartScenario архивирует активный roadmap и возвращает пользователя к первому вопросу опроса.
+// RestartScenario полностью очищает персональный сценарий и возвращает к первому вопросу.
 func RestartScenario(ctx maxbot.Context) error {
 	userID := ctx.Update().UserID
-	if _, err := app.Roadmap.GetActiveRoadmap(context.Background(), userID); err == nil {
-		if err := app.Roadmap.RestartActiveRoadmap(context.Background(), userID); err != nil {
-			return ctx.Send("Не удалось завершить текущий roadmap. Попробуйте /restart ещё раз.")
-		}
+	if err := app.Roadmap.RestartActiveRoadmap(context.Background(), userID); err != nil {
+		return ctx.Send("Не удалось очистить сценарий. Попробуйте /restart ещё раз.")
 	}
 	utils.ResetSmallSurvey(userID)
 	utils.UpdateUserStateStorage(userID, UserStateStart)

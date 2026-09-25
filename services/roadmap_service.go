@@ -20,7 +20,7 @@ type RoadmapService interface {
 	// сценария после нового входа в бот или перезапуска приложения.
 	GetActiveRoadmap(ctx context.Context, userID int64) (dto.RoadmapResponse, error)
 
-	// RestartActiveRoadmap архивирует текущий roadmap, чтобы пользователь мог начать опрос заново.
+	// RestartActiveRoadmap полностью очищает персональные данные пользователя для нового опроса.
 	RestartActiveRoadmap(ctx context.Context, userID int64) error
 
 	// UpdateRoadmapStep обновляет статус одного шага.

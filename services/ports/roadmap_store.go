@@ -22,4 +22,5 @@ type RoadmapStore interface {
 	SaveEnrollmentChoice(ctx context.Context, choice models.RoadmapEnrollmentChoice) (models.RoadmapEnrollmentChoice, error)
 	SaveEmployerApplication(ctx context.Context, application models.RoadmapEmployerApplication) (models.RoadmapEmployerApplication, error)
 	ArchiveRoadmap(ctx context.Context, roadmapID int64) (models.Roadmap, error)
+	ResetUserData(ctx context.Context, userID int64) error
 }

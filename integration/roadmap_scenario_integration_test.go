@@ -164,30 +164,27 @@ func testSmallSurveyScenarioCreatesRoadmap(t *testing.T) {
 	if _, err := roadmapService.GetActiveRoadmap(ctx, scenarioUserID); err == nil {
 		t.Fatal("no active roadmap must remain after restart")
 	}
-	archivedRoadmap, err := roadmapService.GetRoadmap(ctx, scenarioUserID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
-	if err != nil || archivedRoadmap.Status != models.RoadmapStatusArchived {
-		t.Fatalf("roadmap must be archived after restart: %v; roadmap=%#v", err, archivedRoadmap)
+	if _, err := roadmapService.GetRoadmap(ctx, scenarioUserID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID}); err == nil {
+		t.Fatal("roadmap must be deleted after restart")
 	}
-	if roadmap.Steps[0].Status != models.RoadmapStepStatusActive {
-		t.Fatalf("first roadmap step status = %q, want %q", roadmap.Steps[0].Status, models.RoadmapStepStatusActive)
-	}
-
-	var persistedGoal models.UserGoal
-	if err := tx.Preload("CareerDirection.Company").First(&persistedGoal, "id = ?", goal.ID).Error; err != nil {
-		t.Fatalf("load persisted goal: %v", err)
-	}
-	if persistedGoal.CareerDirection.Company.Name != "Т1" || persistedGoal.CareerDirection.Name != direction.Name {
-		t.Fatalf("persisted goal does not match selected trajectory")
-	}
-
-	var activeRoadmaps int64
-	if err := tx.Model(&models.Roadmap{}).
-		Where("user_goal_id = ? AND status = ?", goal.ID, models.RoadmapStatusActive).
-		Count(&activeRoadmaps).Error; err != nil {
-		t.Fatalf("count active roadmaps: %v", err)
-	}
-	if activeRoadmaps != 0 {
-		t.Fatalf("active roadmaps = %d, want 0 after restart", activeRoadmaps)
+	for name, model := range map[string]any{
+		"profile":  &models.UserProfile{},
+		"subjects": &models.UserSubject{},
+		"goals":    &models.UserGoal{},
+		"roadmaps": &models.Roadmap{},
+	} {
+		var count int64
+		query := tx.Model(model)
+		if name == "profile" {
+			query = query.Where("id = ?", scenarioUserID)
+		} else if name == "roadmaps" {
+			query = query.Joins("JOIN user_goals ON user_goals.id = roadmaps.user_goal_id").Where("user_goals.user_profile_id = ?", scenarioUserID)
+		} else {
+			query = query.Where("user_profile_id = ?", scenarioUserID)
+		}
+		if err := query.Count(&count).Error; err != nil || count != 0 {
+			t.Fatalf("%s must be deleted after restart: count=%d err=%v", name, count, err)
+		}
 	}
 }
 

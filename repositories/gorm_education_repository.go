@@ -58,6 +58,15 @@ func (r *GormEducationRepository) ListEducationOptions(ctx context.Context, filt
 			filter.ExamSubjectIDs,
 		)
 	}
+	if filter.RequireEmployerOpportunity {
+		optionsQuery = optionsQuery.Where(`EXISTS (
+			SELECT 1 FROM company_opportunities AS co
+			WHERE co.company_id = ?
+				AND co.career_direction_id = ?
+				AND co.is_active = true
+				AND (co.region_id IS NULL OR co.region_id = universities.region_id)
+		)`, filter.CompanyID, filter.CareerDirectionID)
+	}
 
 	var programs []models.EducationProgram
 	err := optionsQuery.

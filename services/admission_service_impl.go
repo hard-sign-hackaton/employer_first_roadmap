@@ -79,7 +79,7 @@ func (s *admissionService) DiagnoseEducationOptions(ctx context.Context, userID 
 		return diagnosis, nil
 	}
 
-	allCatalogPrograms, err := s.listProgramsForDiagnosis(ctx, roadmap, profile.RegionID, nil, true)
+	allCatalogPrograms, err := s.listProgramsForDiagnosis(ctx, roadmap, profile.RegionID, nil, true, false)
 	if err != nil {
 		return diagnosis, err
 	}
@@ -89,7 +89,7 @@ func (s *admissionService) DiagnoseEducationOptions(ctx context.Context, userID 
 		return diagnosis, nil
 	}
 
-	examCompatiblePrograms, err := s.listProgramsForDiagnosis(ctx, roadmap, profile.RegionID, subjectIDs(scores), true)
+	examCompatiblePrograms, err := s.listProgramsForDiagnosis(ctx, roadmap, profile.RegionID, subjectIDs(scores), true, false)
 	if err != nil {
 		return diagnosis, err
 	}
@@ -100,6 +100,14 @@ func (s *admissionService) DiagnoseEducationOptions(ctx context.Context, userID 
 
 	if !hasProgramsWithMinimumScores(examCompatiblePrograms, scores) {
 		diagnosis.Reason = "minimum_scores_not_met"
+		return diagnosis, nil
+	}
+	employerCompatiblePrograms, err := s.listProgramsForDiagnosis(ctx, roadmap, profile.RegionID, subjectIDs(scores), true, true)
+	if err != nil {
+		return diagnosis, err
+	}
+	if len(employerCompatiblePrograms) == 0 {
+		diagnosis.Reason = "no_employer_opportunity"
 		return diagnosis, nil
 	}
 
@@ -235,12 +243,14 @@ type educationOption struct {
 	response dto.EducationOptionResponse
 }
 
-func (s *admissionService) listProgramsForDiagnosis(ctx context.Context, roadmap models.Roadmap, regionID int64, examSubjectIDs []int64, expandGeography bool) ([]models.EducationProgram, error) {
+func (s *admissionService) listProgramsForDiagnosis(ctx context.Context, roadmap models.Roadmap, regionID int64, examSubjectIDs []int64, expandGeography, requireEmployerOpportunity bool) ([]models.EducationProgram, error) {
 	programs, err := s.education.ListEducationOptions(ctx, ports.EducationOptionsFilter{
-		CareerDirectionID: roadmap.UserGoal.CareerDirectionID,
-		ExamSubjectIDs:    examSubjectIDs,
-		RegionID:          regionID,
-		ExpandGeography:   expandGeography,
+		CareerDirectionID:          roadmap.UserGoal.CareerDirectionID,
+		CompanyID:                  roadmap.UserGoal.CareerDirection.CompanyID,
+		ExamSubjectIDs:             examSubjectIDs,
+		RegionID:                   regionID,
+		ExpandGeography:            expandGeography,
+		RequireEmployerOpportunity: requireEmployerOpportunity,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list education options: %w", err)
@@ -262,7 +272,7 @@ func (s *admissionService) educationOptions(ctx context.Context, userID int64, r
 		return nil, fmt.Errorf("at least one passed exam with an actual score is required")
 	}
 
-	programs, err := s.listProgramsForDiagnosis(ctx, roadmap, profile.RegionID, subjectIDs(scores), expandGeography)
+	programs, err := s.listProgramsForDiagnosis(ctx, roadmap, profile.RegionID, subjectIDs(scores), expandGeography, true)
 	if err != nil {
 		return nil, err
 	}

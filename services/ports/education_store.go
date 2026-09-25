@@ -8,10 +8,12 @@ import (
 
 // EducationOptionsFilter описывает параметры выборки вариантов поступления.
 type EducationOptionsFilter struct {
-	CareerDirectionID int64
-	ExamSubjectIDs    []int64
-	RegionID          int64
-	ExpandGeography   bool
+	CareerDirectionID          int64
+	CompanyID                  int64
+	ExamSubjectIDs             []int64
+	RegionID                   int64
+	ExpandGeography            bool
+	RequireEmployerOpportunity bool
 }
 
 // EducationStore предоставляет сервисам данные об ОП, ЕГЭ и приёмной кампании.

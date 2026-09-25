@@ -201,6 +201,12 @@ func continueActiveRoadmap(ctx maxbot.Context) error {
 		kb.AddRow().AddMessage("Документы поданы")
 		return ctx.Send("План подачи сохранён. Подайте документы в выбранные вузы и отметьте этот шаг после подачи.", maxbot.WithKeyboard(kb))
 	case models.RoadmapStepTypeLearnAtUniversity:
+		if roadmap.EnrollmentChoice == nil {
+			return showEnrollmentChoice(ctx)
+		}
+		if roadmap.EnrollmentChoice.Status != models.EnrollmentStatusChosen {
+			return ctx.Send("Итог приёмной кампании не подтверждён. Вернитесь к выбору результата поступления.")
+		}
 		return showLearningProgress(ctx)
 	case models.RoadmapStepTypeEmployerExperience:
 		return showEmployerExperience(ctx)
@@ -580,7 +586,7 @@ func showEnrollmentChoice(ctx maxbot.Context) error {
 	}
 	kb.AddRow().AddMessage("Не поступил")
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapEnrollmentChoice)
-	return ctx.Send("Приёмная кампания завершена. Укажите итоговый вуз и программу:\n\n"+strings.Join(lines, "\n"), maxbot.WithKeyboard(kb))
+	return ctx.Send("Этап 4. Результаты приёмной кампании.\n\nПриёмная кампания завершена. Укажите итоговый вуз и программу:\n\n"+strings.Join(lines, "\n"), maxbot.WithKeyboard(kb))
 }
 
 func saveEnrollmentChoice(ctx maxbot.Context, index int) error {

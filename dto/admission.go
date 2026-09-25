@@ -82,4 +82,5 @@ type EnrollmentChoiceResponse struct {
 	UniversityName         string `json:"university_name,omitempty"`
 	EducationProgramName   string `json:"education_program_name,omitempty"`
 	EnrollmentYear         *int16 `json:"enrollment_year,omitempty"`
+	CurrentStudyYear       int16  `json:"current_study_year"`
 }

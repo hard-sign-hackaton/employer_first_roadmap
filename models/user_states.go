@@ -42,5 +42,8 @@ const (
 	UserStateRoadmapUniversityOptions   UserState = "roadmap_university_options"
 	UserStateRoadmapAdmissionSubmitting UserState = "roadmap_admission_submitting"
 	UserStateRoadmapEnrollmentChoice    UserState = "roadmap_enrollment_choice"
+	UserStateRoadmapLearning            UserState = "roadmap_learning"
+	UserStateRoadmapEmployerExperience  UserState = "roadmap_employer_experience"
+	UserStateRoadmapEmployerApplication UserState = "roadmap_employer_application"
 	UserStateRoadmapPostAdmission       UserState = "roadmap_post_admission"
 )

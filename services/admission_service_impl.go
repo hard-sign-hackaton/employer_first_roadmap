@@ -208,6 +208,7 @@ func (s *admissionService) SaveEnrollmentChoice(ctx context.Context, userID int6
 		AdmissionApplicationID: request.AdmissionApplicationID,
 		Status:                 request.Status,
 		EnrollmentYear:         request.EnrollmentYear,
+		CurrentStudyYear:       1,
 		DecidedAt:              time.Now().UTC(),
 	})
 	if err != nil {
@@ -220,6 +221,11 @@ func (s *admissionService) SaveEnrollmentChoice(ctx context.Context, userID int6
 	if request.Status == models.EnrollmentStatusChosen {
 		if err := s.attachEmployerOpportunity(ctx, roadmap, *application); err != nil {
 			return dto.EnrollmentChoiceResponse{}, err
+		}
+	}
+	if request.Status == models.EnrollmentStatusNotEnrolled {
+		if _, err := s.roadmaps.ArchiveRoadmap(ctx, roadmap.ID); err != nil {
+			return dto.EnrollmentChoiceResponse{}, fmt.Errorf("archive unsuccessful roadmap: %w", err)
 		}
 	}
 	return enrollmentChoiceResponse(choice), nil
@@ -545,6 +551,7 @@ func enrollmentChoiceResponse(choice models.RoadmapEnrollmentChoice) dto.Enrollm
 		Status:                 choice.Status,
 		AdmissionApplicationID: choice.AdmissionApplicationID,
 		EnrollmentYear:         choice.EnrollmentYear,
+		CurrentStudyYear:       choice.CurrentStudyYear,
 	}
 	if choice.AdmissionApplication != nil {
 		response.UniversityName = choice.AdmissionApplication.EducationProgram.University.Name

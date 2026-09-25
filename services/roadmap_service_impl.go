@@ -146,11 +146,19 @@ func (s *roadmapService) GetEmployerOpportunity(ctx context.Context, userID int6
 		return dto.CompanyOpportunityResponse{}, fmt.Errorf("an enrolled education program is required before selecting an employer opportunity")
 	}
 
-	direction := roadmap.UserGoal.CareerDirection
-	regionID := roadmap.EnrollmentChoice.AdmissionApplication.EducationProgram.University.RegionID
-	opportunity, err := s.careers.FindActiveOpportunity(ctx, direction.CompanyID, direction.ID, regionID)
-	if err != nil {
-		return dto.CompanyOpportunityResponse{}, fmt.Errorf("find employer opportunity: %w", err)
+	var opportunity *models.CompanyOpportunity
+	for index := range roadmap.Steps {
+		step := &roadmap.Steps[index]
+		if step.StepType == models.RoadmapStepTypeEmployerExperience && step.CompanyOpportunity != nil {
+			opportunity = step.CompanyOpportunity
+			break
+		}
+	}
+	if opportunity == nil {
+		return dto.CompanyOpportunityResponse{}, fmt.Errorf("no employer opportunity is configured for the selected program")
+	}
+	if roadmap.EnrollmentChoice.CurrentStudyYear < opportunity.MinStudyYear {
+		return dto.CompanyOpportunityResponse{}, fmt.Errorf("employer opportunity is available from study year %d", opportunity.MinStudyYear)
 	}
 	return dto.CompanyOpportunityResponse{
 		ID:           opportunity.ID,
@@ -161,6 +169,62 @@ func (s *roadmapService) GetEmployerOpportunity(ctx context.Context, userID int6
 		MinStudyYear: opportunity.MinStudyYear,
 		IsAvailable:  opportunity.IsActive,
 	}, nil
+}
+
+func (s *roadmapService) AdvanceStudyYear(ctx context.Context, userID int64, request dto.GetRoadmapRequest) (dto.EnrollmentChoiceResponse, error) {
+	roadmap, err := s.roadmaps.FindRoadmapByID(ctx, userID, request.RoadmapID)
+	if err != nil {
+		return dto.EnrollmentChoiceResponse{}, fmt.Errorf("find roadmap: %w", err)
+	}
+	choice := roadmap.EnrollmentChoice
+	if roadmap.Status != models.RoadmapStatusActive || choice == nil || choice.Status != models.EnrollmentStatusChosen {
+		return dto.EnrollmentChoiceResponse{}, fmt.Errorf("an active enrolled roadmap is required")
+	}
+	if choice.CurrentStudyYear >= 6 {
+		return dto.EnrollmentChoiceResponse{}, fmt.Errorf("maximum study year has already been reached")
+	}
+	choice.CurrentStudyYear++
+	choice.DecidedAt = time.Now().UTC()
+	saved, err := s.roadmaps.SaveEnrollmentChoice(ctx, *choice)
+	if err != nil {
+		return dto.EnrollmentChoiceResponse{}, fmt.Errorf("update study year: %w", err)
+	}
+	return enrollmentChoiceResponse(saved), nil
+}
+
+func (s *roadmapService) SubmitEmployerApplication(ctx context.Context, userID int64, request dto.GetRoadmapRequest) (dto.EmployerApplicationResponse, error) {
+	roadmap, err := s.roadmaps.FindRoadmapByID(ctx, userID, request.RoadmapID)
+	if err != nil {
+		return dto.EmployerApplicationResponse{}, fmt.Errorf("find roadmap: %w", err)
+	}
+	if roadmap.Status != models.RoadmapStatusActive {
+		return dto.EmployerApplicationResponse{}, fmt.Errorf("only an active roadmap can submit an employer application")
+	}
+	var opportunityID int64
+	for _, step := range roadmap.Steps {
+		if step.StepType == models.RoadmapStepTypeEmployerExperience && step.Status == models.RoadmapStepStatusCompleted && step.CompanyOpportunityID != nil {
+			opportunityID = *step.CompanyOpportunityID
+		}
+	}
+	if opportunityID == 0 {
+		return dto.EmployerApplicationResponse{}, fmt.Errorf("complete an employer opportunity before applying")
+	}
+	var nextStep *models.RoadmapStep
+	for index := range roadmap.Steps {
+		step := &roadmap.Steps[index]
+		if step.Status == models.RoadmapStepStatusActive || step.Status == models.RoadmapStepStatusPending {
+			nextStep = step
+			break
+		}
+	}
+	if nextStep == nil || nextStep.StepType != models.RoadmapStepTypeApplyToEmployer {
+		return dto.EmployerApplicationResponse{}, fmt.Errorf("employer application is not the current roadmap step")
+	}
+	saved, err := s.roadmaps.SaveEmployerApplication(ctx, models.RoadmapEmployerApplication{RoadmapID: roadmap.ID, CompanyOpportunityID: opportunityID, Status: "submitted", SubmittedAt: time.Now().UTC()})
+	if err != nil {
+		return dto.EmployerApplicationResponse{}, fmt.Errorf("save employer application: %w", err)
+	}
+	return dto.EmployerApplicationResponse{CompanyOpportunityID: saved.CompanyOpportunityID, Status: saved.Status}, nil
 }
 
 func roadmapSteps(template models.RoadmapTemplate) []models.RoadmapStep {
@@ -187,6 +251,7 @@ func roadmapResponse(roadmap models.Roadmap) dto.RoadmapResponse {
 	steps := make([]dto.RoadmapStepResponse, 0, len(roadmap.Steps))
 	var nextAction *dto.RoadmapStepResponse
 	var enrollmentChoice *dto.EnrollmentChoiceResponse
+	var employerApplication *dto.EmployerApplicationResponse
 	for _, step := range roadmap.Steps {
 		response := roadmapStepResponse(step)
 		steps = append(steps, response)
@@ -199,13 +264,18 @@ func roadmapResponse(roadmap models.Roadmap) dto.RoadmapResponse {
 		response := enrollmentChoiceResponse(*roadmap.EnrollmentChoice)
 		enrollmentChoice = &response
 	}
+	if roadmap.EmployerApplication != nil {
+		response := dto.EmployerApplicationResponse{CompanyOpportunityID: roadmap.EmployerApplication.CompanyOpportunityID, Status: roadmap.EmployerApplication.Status}
+		employerApplication = &response
+	}
 	return dto.RoadmapResponse{
-		ID:               roadmap.ID,
-		GoalID:           roadmap.UserGoalID,
-		Status:           roadmap.Status,
-		Steps:            steps,
-		NextAction:       nextAction,
-		EnrollmentChoice: enrollmentChoice,
+		ID:                  roadmap.ID,
+		GoalID:              roadmap.UserGoalID,
+		Status:              roadmap.Status,
+		Steps:               steps,
+		NextAction:          nextAction,
+		EnrollmentChoice:    enrollmentChoice,
+		EmployerApplication: employerApplication,
 	}
 }
 

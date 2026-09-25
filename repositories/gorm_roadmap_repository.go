@@ -218,6 +218,11 @@ func (r *GormRoadmapRepository) SaveEnrollmentChoice(ctx context.Context, choice
 	return choice, err
 }
 
+func (r *GormRoadmapRepository) SaveEmployerApplication(ctx context.Context, application models.RoadmapEmployerApplication) (models.RoadmapEmployerApplication, error) {
+	err := r.db.WithContext(ctx).Save(&application).Error
+	return application, err
+}
+
 func (r *GormRoadmapRepository) ArchiveRoadmap(ctx context.Context, roadmapID int64) (models.Roadmap, error) {
 	archivedAt := time.Now().UTC()
 	if err := r.db.WithContext(ctx).
@@ -248,5 +253,6 @@ func (r *GormRoadmapRepository) roadmapDetails(query *gorm.DB) *gorm.DB {
 		}).
 		Preload("Steps.CompanyOpportunity").
 		Preload("AdmissionApplications.EducationProgram.University").
-		Preload("EnrollmentChoice.AdmissionApplication.EducationProgram.University")
+		Preload("EnrollmentChoice.AdmissionApplication.EducationProgram.University").
+		Preload("EmployerApplication.CompanyOpportunity")
 }

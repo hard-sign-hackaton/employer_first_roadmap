@@ -13,6 +13,10 @@ type AdmissionService interface {
 	// Вход: dto.FindEducationOptionsRequest и идентификатор пользователя. Выход: список dto.EducationOptionResponse.
 	FindEducationOptions(ctx context.Context, userID int64, request dto.FindEducationOptionsRequest) ([]dto.EducationOptionResponse, error)
 
+	// DiagnoseEducationOptions объясняет отсутствие вариантов: каталог, набор
+	// ЕГЭ, минимальные баллы либо ограничение по региону.
+	DiagnoseEducationOptions(ctx context.Context, userID int64, request dto.FindEducationOptionsRequest) (dto.EducationOptionsDiagnosisResponse, error)
+
 	// GetAdmissionPlanLimits возвращает действующие ограничения кампании для roadmap.
 	// Вход: dto.GetAdmissionPlanRequest и идентификатор пользователя. Выход: dto.AdmissionPlanLimitsResponse.
 	GetAdmissionPlanLimits(ctx context.Context, userID int64, request dto.GetAdmissionPlanRequest) (dto.AdmissionPlanLimitsResponse, error)

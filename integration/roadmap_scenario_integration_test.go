@@ -180,6 +180,119 @@ func TestSmallSurveyScenarioForNinthGrade(t *testing.T) {
 	runScenario(t, "9 класс: компания → ЕГЭ → цель → roadmap", testSmallSurveyScenarioForNinthGrade)
 }
 
+// TestAdmissionScenarioUsesLatestPublishedRules проверяет путь после ЕГЭ для
+// будущего года поступления: подбор использует последние опубликованные правила,
+// а план подачи — последние опубликованные лимиты кампании.
+func TestAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
+	runScenario(t, "будущее поступление: последние правила → вуз → зачисление → работодатель", testAdmissionScenarioUsesLatestPublishedRules)
+}
+
+func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
+	db := openScenarioDatabase(t)
+	tx := beginScenarioTransaction(t, db)
+	profileStore := repositories.NewGormProfileRepository(tx)
+	careerStore := repositories.NewGormCareerRepository(tx)
+	educationStore := repositories.NewGormEducationRepository(tx)
+	roadmapStore := repositories.NewGormRoadmapRepository(tx)
+	profileService := services.NewProfileService(profileStore)
+	trajectoryService := services.NewTrajectoryService(careerStore, educationStore, profileStore, roadmapStore)
+	roadmapService := services.NewRoadmapService(roadmapStore, careerStore)
+	admissionService := services.NewAdmissionService(educationStore, profileStore, roadmapStore, careerStore)
+	ctx := context.Background()
+	userID := scenarioUserID + 3
+	const targetAdmissionYear int16 = 2028
+
+	regionID := regionIDByName(t, db, "Пермский край")
+	if _, err := profileService.SaveProfile(ctx, userID, dto.UpsertProfileRequest{Grade: 10, RegionID: regionID, WillingToRelocate: false}); err != nil {
+		t.Fatalf("save profile: %v", err)
+	}
+	company := companyByName(t, trajectoryService, ctx, "Т1")
+	if _, err := trajectoryService.SelectCompany(ctx, userID, dto.SelectCompanyRequest{CompanyID: company.ID}); err != nil {
+		t.Fatalf("select company: %v", err)
+	}
+	direction := directionByName(t, mustDirections(t, trajectoryService, ctx, userID, company.ID), "Разработчик программного обеспечения")
+	resultNames := []string{"Русский язык", "Математика (профильная)", "Информатика"}
+	plannedSubjects := selectedExamInputs(t, db, 0)
+	for index := range plannedSubjects {
+		plannedSubjects[index].Status = models.SubjectStatusPlanned
+		plannedSubjects[index].ExpectedScore = nil
+	}
+	if _, err := profileService.SaveUserSubjects(ctx, userID, dto.SaveUserSubjectsRequest{Subjects: plannedSubjects}); err != nil {
+		t.Fatalf("save planned EGE subjects: %v", err)
+	}
+	goal, err := trajectoryService.ConfirmGoal(ctx, userID, dto.ConfirmGoalRequest{CareerDirectionID: direction.ID, TargetAdmissionYear: targetAdmissionYear})
+	if err != nil {
+		t.Fatalf("confirm goal: %v", err)
+	}
+	roadmap, err := roadmapService.CreateRoadmap(ctx, userID, dto.CreateRoadmapRequest{GoalID: goal.ID})
+	if err != nil {
+		t.Fatalf("create roadmap: %v", err)
+	}
+
+	if _, err := profileService.SaveExamResults(ctx, userID, dto.SaveExamResultsRequest{Results: examResults(t, db, 100, "Русский язык", "История", "Литература")}); err != nil {
+		t.Fatalf("save incompatible EGE results: %v", err)
+	}
+	assertEducationDiagnosis(t, admissionService, ctx, userID, roadmap.ID, "exam_subjects_mismatch")
+	if _, err := profileService.SaveExamResults(ctx, userID, dto.SaveExamResultsRequest{Results: examResults(t, db, 0, resultNames...)}); err != nil {
+		t.Fatalf("save low EGE results: %v", err)
+	}
+	assertEducationDiagnosis(t, admissionService, ctx, userID, roadmap.ID, "minimum_scores_not_met")
+	moscowID := regionIDByName(t, db, "Москва")
+	if _, err := profileService.SaveProfile(ctx, userID, dto.UpsertProfileRequest{Grade: 10, RegionID: moscowID, WillingToRelocate: false}); err != nil {
+		t.Fatalf("save Moscow profile: %v", err)
+	}
+	if _, err := profileService.SaveExamResults(ctx, userID, dto.SaveExamResultsRequest{Results: examResults(t, db, 100, resultNames...)}); err != nil {
+		t.Fatalf("save high EGE results: %v", err)
+	}
+	assertEducationDiagnosis(t, admissionService, ctx, userID, roadmap.ID, "region_restriction")
+	if _, err := profileService.SaveProfile(ctx, userID, dto.UpsertProfileRequest{Grade: 10, RegionID: regionID, WillingToRelocate: false}); err != nil {
+		t.Fatalf("restore Perm profile: %v", err)
+	}
+
+	options, err := admissionService.FindEducationOptions(ctx, userID, dto.FindEducationOptionsRequest{RoadmapID: roadmap.ID})
+	if err != nil || len(options) == 0 {
+		t.Fatalf("find education options: %v; options=%d", err, len(options))
+	}
+	option := options[0]
+	if option.AdmissionYear != targetAdmissionYear || option.RulesSourceYear != 2026 {
+		t.Fatalf("education option years = target %d / rules %d, want %d / 2026", option.AdmissionYear, option.RulesSourceYear, targetAdmissionYear)
+	}
+	if option.PassingScoreSourceYear == nil || *option.PassingScoreSourceYear != 2025 {
+		t.Fatalf("passing-score source year = %v, want 2025", option.PassingScoreSourceYear)
+	}
+
+	limits, err := admissionService.GetAdmissionPlanLimits(ctx, userID, dto.GetAdmissionPlanRequest{RoadmapID: roadmap.ID})
+	if err != nil {
+		t.Fatalf("get admission plan limits: %v", err)
+	}
+	if limits.AdmissionYear != targetAdmissionYear || limits.RulesSourceYear != 2026 || limits.MaxUniversities != 5 || limits.MaxProgramsPerUniversity != 5 {
+		t.Fatalf("unexpected plan limits: %#v", limits)
+	}
+	applications, err := admissionService.SaveAdmissionPlan(ctx, userID, dto.GetAdmissionPlanRequest{RoadmapID: roadmap.ID}, dto.SaveAdmissionPlanRequest{Applications: []dto.AdmissionPlanItemInput{{EducationProgramID: option.EducationProgramID}}})
+	if err != nil || len(applications) != 1 {
+		t.Fatalf("save admission plan: %v; applications=%d", err, len(applications))
+	}
+	applicationID := applications[0].ID
+	if _, err := admissionService.SaveEnrollmentChoice(ctx, userID, dto.GetAdmissionPlanRequest{RoadmapID: roadmap.ID}, dto.SaveEnrollmentChoiceRequest{Status: models.EnrollmentStatusChosen, AdmissionApplicationID: &applicationID}); err != nil {
+		t.Fatalf("save enrollment choice: %v", err)
+	}
+	opportunity, err := roadmapService.GetEmployerOpportunity(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
+	if err != nil || !opportunity.IsAvailable || opportunity.Name == "" {
+		t.Fatalf("get employer opportunity: %v; opportunity=%#v", err, opportunity)
+	}
+}
+
+func assertEducationDiagnosis(t *testing.T, service services.AdmissionService, ctx context.Context, userID, roadmapID int64, want string) {
+	t.Helper()
+	diagnosis, err := service.DiagnoseEducationOptions(ctx, userID, dto.FindEducationOptionsRequest{RoadmapID: roadmapID})
+	if err != nil {
+		t.Fatalf("diagnose education options: %v", err)
+	}
+	if diagnosis.Reason != want {
+		t.Fatalf("diagnosis reason = %q, want %q", diagnosis.Reason, want)
+	}
+}
+
 func testSmallSurveyScenarioForNinthGrade(t *testing.T) {
 	db := openScenarioDatabase(t)
 	tx := beginScenarioTransaction(t, db)
@@ -344,6 +457,15 @@ func companyByName(t *testing.T, service services.TrajectoryService, ctx context
 	}
 	t.Fatalf("company %q was not seeded", name)
 	return dto.CompanyCatalogItemResponse{}
+}
+
+func mustDirections(t *testing.T, service services.TrajectoryService, ctx context.Context, userID, companyID int64) []dto.CareerDirectionResponse {
+	t.Helper()
+	directions, err := service.GetCareerDirections(ctx, userID, dto.GetCareerDirectionsRequest{CompanyID: companyID})
+	if err != nil {
+		t.Fatalf("get career directions: %v", err)
+	}
+	return directions
 }
 
 func regionIDByName(t *testing.T, db *gorm.DB, name string) int64 {

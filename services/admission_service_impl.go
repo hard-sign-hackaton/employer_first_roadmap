@@ -59,16 +59,72 @@ func (s *admissionService) FindEducationOptions(ctx context.Context, userID int6
 	return result, nil
 }
 
+func (s *admissionService) DiagnoseEducationOptions(ctx context.Context, userID int64, request dto.FindEducationOptionsRequest) (dto.EducationOptionsDiagnosisResponse, error) {
+	roadmap, err := s.roadmap(ctx, userID, request.RoadmapID)
+	if err != nil {
+		return dto.EducationOptionsDiagnosisResponse{}, err
+	}
+	diagnosis := dto.EducationOptionsDiagnosisResponse{TargetAdmissionYear: roadmap.UserGoal.TargetAdmissionYear}
+	profile, err := s.profiles.FindProfileByUserID(ctx, userID)
+	if err != nil {
+		return diagnosis, fmt.Errorf("find user profile: %w", err)
+	}
+	subjects, err := s.profiles.ListUserSubjects(ctx, userID)
+	if err != nil {
+		return diagnosis, fmt.Errorf("list user subjects: %w", err)
+	}
+	scores := actualExamScores(subjects)
+	if len(scores) == 0 {
+		diagnosis.Reason = "missing_exam_results"
+		return diagnosis, nil
+	}
+
+	allCatalogPrograms, err := s.listProgramsForDiagnosis(ctx, roadmap, profile.RegionID, nil, true)
+	if err != nil {
+		return diagnosis, err
+	}
+	diagnosis.RulesSourceYear = latestRulesSourceYear(allCatalogPrograms)
+	if len(allCatalogPrograms) == 0 {
+		diagnosis.Reason = "no_catalog_data"
+		return diagnosis, nil
+	}
+
+	examCompatiblePrograms, err := s.listProgramsForDiagnosis(ctx, roadmap, profile.RegionID, subjectIDs(scores), true)
+	if err != nil {
+		return diagnosis, err
+	}
+	if len(examCompatiblePrograms) == 0 {
+		diagnosis.Reason = "exam_subjects_mismatch"
+		return diagnosis, nil
+	}
+
+	if !hasProgramsWithMinimumScores(examCompatiblePrograms, scores) {
+		diagnosis.Reason = "minimum_scores_not_met"
+		return diagnosis, nil
+	}
+
+	regionalOptions, err := s.educationOptions(ctx, userID, roadmap, false)
+	if err != nil {
+		return diagnosis, err
+	}
+	if len(regionalOptions) == 0 && !request.ExpandGeography {
+		diagnosis.Reason = "region_restriction"
+		return diagnosis, nil
+	}
+	diagnosis.Reason = "no_options"
+	return diagnosis, nil
+}
+
 func (s *admissionService) GetAdmissionPlanLimits(ctx context.Context, userID int64, request dto.GetAdmissionPlanRequest) (dto.AdmissionPlanLimitsResponse, error) {
 	roadmap, err := s.roadmap(ctx, userID, request.RoadmapID)
 	if err != nil {
 		return dto.AdmissionPlanLimitsResponse{}, err
 	}
-	rule, err := s.education.GetAdmissionCampaignRule(ctx, roadmap.UserGoal.TargetAdmissionYear)
+	rule, err := s.education.GetLatestAdmissionCampaignRule(ctx, roadmap.UserGoal.TargetAdmissionYear)
 	if err != nil {
-		return dto.AdmissionPlanLimitsResponse{}, fmt.Errorf("get admission campaign rule: %w", err)
+		return dto.AdmissionPlanLimitsResponse{}, fmt.Errorf("get latest admission campaign rule: %w", err)
 	}
-	return admissionPlanLimitsResponse(rule), nil
+	return admissionPlanLimitsResponse(roadmap.UserGoal.TargetAdmissionYear, rule), nil
 }
 
 func (s *admissionService) SaveAdmissionPlan(ctx context.Context, userID int64, plan dto.GetAdmissionPlanRequest, request dto.SaveAdmissionPlanRequest) ([]dto.AdmissionApplicationResponse, error) {
@@ -80,9 +136,9 @@ func (s *admissionService) SaveAdmissionPlan(ctx context.Context, userID int64, 
 		return nil, fmt.Errorf("only an active roadmap can be updated")
 	}
 
-	rule, err := s.education.GetAdmissionCampaignRule(ctx, roadmap.UserGoal.TargetAdmissionYear)
+	rule, err := s.education.GetLatestAdmissionCampaignRule(ctx, roadmap.UserGoal.TargetAdmissionYear)
 	if err != nil {
-		return nil, fmt.Errorf("get admission campaign rule: %w", err)
+		return nil, fmt.Errorf("get latest admission campaign rule: %w", err)
 	}
 	profile, err := s.profiles.FindProfileByUserID(ctx, userID)
 	if err != nil {
@@ -174,6 +230,20 @@ type educationOption struct {
 	response dto.EducationOptionResponse
 }
 
+func (s *admissionService) listProgramsForDiagnosis(ctx context.Context, roadmap models.Roadmap, regionID int64, examSubjectIDs []int64, expandGeography bool) ([]models.EducationProgram, error) {
+	programs, err := s.education.ListEducationOptions(ctx, ports.EducationOptionsFilter{
+		CareerDirectionID: roadmap.UserGoal.CareerDirectionID,
+		AdmissionYear:     roadmap.UserGoal.TargetAdmissionYear,
+		ExamSubjectIDs:    examSubjectIDs,
+		RegionID:          regionID,
+		ExpandGeography:   expandGeography,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list education options: %w", err)
+	}
+	return programs, nil
+}
+
 func (s *admissionService) educationOptions(ctx context.Context, userID int64, roadmap models.Roadmap, expandGeography bool) ([]educationOption, error) {
 	profile, err := s.profiles.FindProfileByUserID(ctx, userID)
 	if err != nil {
@@ -188,15 +258,9 @@ func (s *admissionService) educationOptions(ctx context.Context, userID int64, r
 		return nil, fmt.Errorf("at least one passed exam with an actual score is required")
 	}
 
-	programs, err := s.education.ListEducationOptions(ctx, ports.EducationOptionsFilter{
-		CareerDirectionID: roadmap.UserGoal.CareerDirectionID,
-		AdmissionYear:     roadmap.UserGoal.TargetAdmissionYear,
-		ExamSubjectIDs:    subjectIDs(scores),
-		RegionID:          profile.RegionID,
-		ExpandGeography:   expandGeography,
-	})
+	programs, err := s.listProgramsForDiagnosis(ctx, roadmap, profile.RegionID, subjectIDs(scores), expandGeography)
 	if err != nil {
-		return nil, fmt.Errorf("list education options: %w", err)
+		return nil, err
 	}
 
 	result := make([]educationOption, 0, len(programs))
@@ -205,23 +269,25 @@ func (s *admissionService) educationOptions(ctx context.Context, userID int64, r
 		if !ok {
 			continue
 		}
-		budgetScore, paidScore := admissionScoresForYear(program.AdmissionScores, roadmap.UserGoal.TargetAdmissionYear)
+		budgetScore, paidScore, passingScoreSourceYear := latestAdmissionScores(program.AdmissionScores, roadmap.UserGoal.TargetAdmissionYear)
 		minimumTotalScore := minimumTotalScore(combination)
 		result = append(result, educationOption{
 			program: program,
 			response: dto.EducationOptionResponse{
-				UniversityID:       program.UniversityID,
-				UniversityName:     program.University.Name,
-				UniversityRegion:   program.University.Region.Name,
-				EducationProgramID: program.ID,
-				ProgramCode:        program.Code,
-				ProgramName:        program.Name,
-				AdmissionYear:      roadmap.UserGoal.TargetAdmissionYear,
-				RequiredSubjects:   combinationSubjectNames(combination),
-				MinimumTotalScore:  minimumTotalScore,
-				BudgetPassingScore: budgetScore,
-				PaidPassingScore:   paidScore,
-				Explanation:        optionExplanation(totalScore, budgetScore, paidScore),
+				UniversityID:           program.UniversityID,
+				UniversityName:         program.University.Name,
+				UniversityRegion:       program.University.Region.Name,
+				EducationProgramID:     program.ID,
+				ProgramCode:            program.Code,
+				ProgramName:            program.Name,
+				AdmissionYear:          roadmap.UserGoal.TargetAdmissionYear,
+				RulesSourceYear:        combination.AdmissionYear,
+				RequiredSubjects:       combinationSubjectNames(combination),
+				MinimumTotalScore:      minimumTotalScore,
+				BudgetPassingScore:     budgetScore,
+				PaidPassingScore:       paidScore,
+				PassingScoreSourceYear: passingScoreSourceYear,
+				Explanation:            optionExplanation(totalScore, budgetScore, paidScore),
 			},
 		})
 	}
@@ -259,8 +325,20 @@ func subjectIDs(scores map[int64]int16) []int64 {
 }
 
 func matchingExamCombination(combinations []models.ExamCombination, scores map[int64]int16) (models.ExamCombination, int16, bool) {
+	var latestYear int16
+	for _, combination := range combinations {
+		if combination.AdmissionYear > latestYear {
+			latestYear = combination.AdmissionYear
+		}
+	}
+	if latestYear == 0 {
+		return models.ExamCombination{}, 0, false
+	}
 	sort.SliceStable(combinations, func(i, j int) bool { return combinations[i].ID < combinations[j].ID })
 	for _, combination := range combinations {
+		if combination.AdmissionYear != latestYear {
+			continue
+		}
 		var totalScore int16
 		matches := len(combination.Items) > 0
 		for _, item := range combination.Items {
@@ -276,6 +354,30 @@ func matchingExamCombination(combinations []models.ExamCombination, scores map[i
 		}
 	}
 	return models.ExamCombination{}, 0, false
+}
+
+func hasProgramsWithMinimumScores(programs []models.EducationProgram, scores map[int64]int16) bool {
+	for _, program := range programs {
+		if _, _, ok := matchingExamCombination(program.ExamCombinations, scores); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func latestRulesSourceYear(programs []models.EducationProgram) *int16 {
+	var latest int16
+	for _, program := range programs {
+		for _, combination := range program.ExamCombinations {
+			if combination.AdmissionYear > latest {
+				latest = combination.AdmissionYear
+			}
+		}
+	}
+	if latest == 0 {
+		return nil
+	}
+	return &latest
 }
 
 func combinationSubjectNames(combination models.ExamCombination) []string {
@@ -298,13 +400,19 @@ func minimumTotalScore(combination models.ExamCombination) *int16 {
 	return &total
 }
 
-func admissionScoresForYear(scores []models.AdmissionScoreHistory, admissionYear int16) (*int16, *int16) {
+func latestAdmissionScores(scores []models.AdmissionScoreHistory, admissionYear int16) (*int16, *int16, *int16) {
+	var latest *models.AdmissionScoreHistory
 	for _, score := range scores {
-		if score.AdmissionYear == admissionYear {
-			return score.BudgetPassingScore, score.PaidPassingScore
+		if score.AdmissionYear <= admissionYear && (latest == nil || score.AdmissionYear > latest.AdmissionYear) {
+			candidate := score
+			latest = &candidate
 		}
 	}
-	return nil, nil
+	if latest == nil {
+		return nil, nil, nil
+	}
+	year := latest.AdmissionYear
+	return latest.BudgetPassingScore, latest.PaidPassingScore, &year
 }
 
 func optionExplanation(totalScore int16, budgetScore, paidScore *int16) []string {
@@ -326,9 +434,10 @@ func optionExplanation(totalScore int16, budgetScore, paidScore *int16) []string
 	return explanation
 }
 
-func admissionPlanLimitsResponse(rule models.AdmissionCampaignRule) dto.AdmissionPlanLimitsResponse {
+func admissionPlanLimitsResponse(targetYear int16, rule models.AdmissionCampaignRule) dto.AdmissionPlanLimitsResponse {
 	return dto.AdmissionPlanLimitsResponse{
-		AdmissionYear:            rule.AdmissionYear,
+		AdmissionYear:            targetYear,
+		RulesSourceYear:          rule.AdmissionYear,
 		MaxUniversities:          rule.MaxUniversities,
 		MaxProgramsPerUniversity: rule.MaxProgramsPerUniversity,
 	}

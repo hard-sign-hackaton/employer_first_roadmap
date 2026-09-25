@@ -42,7 +42,13 @@ func (r *GormEducationRepository) ListEducationOptions(ctx context.Context, filt
 		Joins("JOIN career_direction_education_programs AS cdep ON cdep.education_program_id = education_programs.id").
 		Joins("JOIN exam_combinations AS ec ON ec.education_program_id = education_programs.id").
 		Joins("JOIN universities ON universities.id = education_programs.university_id").
-		Where("cdep.career_direction_id = ? AND ec.admission_year = ?", filter.CareerDirectionID, filter.AdmissionYear)
+		Where("cdep.career_direction_id = ?", filter.CareerDirectionID).
+		Where(`ec.admission_year = (
+			SELECT MAX(ec_latest.admission_year)
+			FROM exam_combinations AS ec_latest
+			WHERE ec_latest.education_program_id = education_programs.id
+				AND ec_latest.admission_year <= ?
+		)`, filter.AdmissionYear)
 
 	if !filter.ExpandGeography {
 		optionsQuery = optionsQuery.Where("universities.region_id = ?", filter.RegionID)
@@ -58,7 +64,7 @@ func (r *GormEducationRepository) ListEducationOptions(ctx context.Context, filt
 	err := optionsQuery.
 		Distinct("education_programs.*").
 		Preload("University.Region").
-		Preload("ExamCombinations", "admission_year = ?", filter.AdmissionYear).
+		Preload("ExamCombinations", "admission_year <= ?", filter.AdmissionYear).
 		Preload("ExamCombinations.Items.ExamSubject").
 		Preload("AdmissionScores").
 		Order("education_programs.name ASC").
@@ -87,8 +93,11 @@ func (r *GormEducationRepository) ListDirectionIDsAvailableForSubjects(ctx conte
 	return directionIDs, err
 }
 
-func (r *GormEducationRepository) GetAdmissionCampaignRule(ctx context.Context, admissionYear int16) (models.AdmissionCampaignRule, error) {
+func (r *GormEducationRepository) GetLatestAdmissionCampaignRule(ctx context.Context, admissionYear int16) (models.AdmissionCampaignRule, error) {
 	var rule models.AdmissionCampaignRule
-	err := r.db.WithContext(ctx).First(&rule, "admission_year = ?", admissionYear).Error
+	err := r.db.WithContext(ctx).
+		Where("admission_year <= ?", admissionYear).
+		Order("admission_year DESC").
+		First(&rule).Error
 	return rule, err
 }

@@ -160,17 +160,19 @@ func showRoadmapUniversityOptions(ctx maxbot.Context, expandGeography bool) erro
 	if s.RoadmapID <= 0 {
 		return ctx.Send("Не удалось определить roadmap. Начните заново командой /start.")
 	}
-	options, err := app.Admission.FindEducationOptions(context.Background(), id, dto.FindEducationOptionsRequest{RoadmapID: s.RoadmapID, ExpandGeography: expandGeography})
+	profile, profileErr := app.Profile.GetProfile(context.Background(), id)
+	searchAllRegions := expandGeography || (profileErr == nil && profile.WillingToRelocate)
+	options, err := app.Admission.FindEducationOptions(context.Background(), id, dto.FindEducationOptionsRequest{RoadmapID: s.RoadmapID, ExpandGeography: searchAllRegions})
 	if err != nil || len(options) == 0 {
-		return handleNoUniversityOptions(ctx, expandGeography)
+		return handleNoUniversityOptions(ctx, searchAllRegions)
 	}
 	lines := make([]string, 0, len(options))
 	kb := model.NewKeyboard()
 	for index, option := range options {
 		s.AdmissionProgramIDs = append(s.AdmissionProgramIDs, option.EducationProgramID)
-		line := fmt.Sprintf("%d. %s — «%s»\n   Регион: %s; мин. сумма: %s; бюджет: %s; платно: %s",
+		line := fmt.Sprintf("%d. %s — «%s»\n   Регион: %s; правила ЕГЭ: %d; мин. сумма: %s; бюджет: %s; платно: %s%s",
 			index+1, option.UniversityName, option.ProgramName, option.UniversityRegion,
-			scoreOrDash(option.MinimumTotalScore), scoreOrDash(option.BudgetPassingScore), scoreOrDash(option.PaidPassingScore))
+			option.RulesSourceYear, scoreOrDash(option.MinimumTotalScore), scoreOrDash(option.BudgetPassingScore), scoreOrDash(option.PaidPassingScore), passingScoreSourceLabel(option.PassingScoreSourceYear))
 		lines = append(lines, line)
 		s.AdmissionOptionLines = append(s.AdmissionOptionLines, line)
 		kb.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, option.UniversityName))
@@ -186,17 +188,38 @@ func handleNoUniversityOptions(ctx maxbot.Context, expandGeography bool) error {
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapUniversityOptions)
 	s.AdmissionProgramIDs = nil
 	s.AdmissionOptionLines = nil
-	profile, err := app.Profile.GetProfile(context.Background(), id)
-	willingToRelocate := err == nil && profile.WillingToRelocate
-	if !willingToRelocate && !expandGeography {
+	profile, profileErr := app.Profile.GetProfile(context.Background(), id)
+	willingToRelocate := profileErr == nil && profile.WillingToRelocate
+	diagnosis, diagnosisErr := app.Admission.DiagnoseEducationOptions(context.Background(), id, dto.FindEducationOptionsRequest{RoadmapID: s.RoadmapID, ExpandGeography: expandGeography})
+	if diagnosisErr != nil {
+		return ctx.Send("Не удалось определить причину, по которой не нашлись вузы. Попробуйте позже.")
+	}
+	if diagnosis.Reason == "region_restriction" && !willingToRelocate && !expandGeography {
 		kb := model.NewKeyboard()
 		kb.AddRow().AddMessage("Расширить географию поиска")
 		kb.AddRow().AddMessage("Начать заново")
-		return ctx.Send("Подходящих вузов в вашем регионе не нашлось, а в опросе вы указали, что не готовы к переезду.\n\nХотите попробовать ещё раз с расширением географии?", maxbot.WithKeyboard(kb))
+		return ctx.Send("По вашим ЕГЭ и баллам подходящие программы есть, но в регионе «"+profile.Region.Name+"» их нет в демо-каталоге.\n\nВы указали, что не готовы к переезду. Хотите посмотреть варианты в других регионах?", maxbot.WithKeyboard(kb))
 	}
 	kb := model.NewKeyboard()
 	kb.AddRow().AddMessage("Начать заново")
-	return ctx.Send("К сожалению, подходящих вариантов пока не нашлось. Начните заново командой /start или попробуйте позже.", maxbot.WithKeyboard(kb))
+	return ctx.Send(noUniversityOptionsMessage(diagnosis), maxbot.WithKeyboard(kb))
+}
+
+func noUniversityOptionsMessage(diagnosis dto.EducationOptionsDiagnosisResponse) string {
+	switch diagnosis.Reason {
+	case "missing_exam_results":
+		return "Не найдены фактические баллы ЕГЭ. Укажите балл хотя бы по одному предмету и попробуйте снова."
+	case "no_catalog_data":
+		return "Для выбранного карьерного направления в демо-каталоге пока нет образовательных программ с опубликованными правилами ЕГЭ."
+	case "exam_subjects_mismatch":
+		return "В базе есть программы для выбранного направления, но ни одна их комбинация ЕГЭ не совпадает с сохранёнными предметами. Пересмотрите набор ЕГЭ или направление."
+	case "minimum_scores_not_met":
+		return "Ваш набор ЕГЭ подходит, но фактические баллы ниже минимальных требований доступных программ. Проверьте введённые баллы или пересмотрите траекторию."
+	case "region_restriction":
+		return "В вашем регионе подходящих программ нет. В других регионах варианты есть, но поиск по всей стране сейчас не включён."
+	default:
+		return "Подходящих вариантов в каталоге не найдено. Попробуйте позже или пересмотрите карьерное направление."
+	}
 }
 
 func scoreOrDash(score *int16) string {
@@ -204,6 +227,13 @@ func scoreOrDash(score *int16) string {
 		return "—"
 	}
 	return strconv.FormatInt(int64(*score), 10)
+}
+
+func passingScoreSourceLabel(year *int16) string {
+	if year == nil {
+		return ""
+	}
+	return fmt.Sprintf(" (проходные баллы за %d)", *year)
 }
 
 func selectRoadmapProgram(ctx maxbot.Context, index int) error {

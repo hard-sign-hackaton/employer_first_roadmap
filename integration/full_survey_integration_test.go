@@ -118,6 +118,19 @@ func selectedExamInputs(t *testing.T, db *gorm.DB, score int16) []dto.UserSubjec
 	return inputs
 }
 
+func examResults(t *testing.T, db *gorm.DB, score int16, names ...string) []dto.ExamResultInput {
+	t.Helper()
+	results := make([]dto.ExamResultInput, 0, len(names))
+	for _, name := range names {
+		var subject models.ExamSubject
+		if err := db.First(&subject, "name = ?", name).Error; err != nil {
+			t.Fatalf("find EGE subject %q: %v", name, err)
+		}
+		results = append(results, dto.ExamResultInput{ExamSubjectID: subject.ID, ActualScore: score})
+	}
+	return results
+}
+
 func tagIDByName(t *testing.T, db *gorm.DB, name string) int64 {
 	t.Helper()
 	var tag models.InterestTag

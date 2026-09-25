@@ -2,18 +2,20 @@ package dto
 
 // EducationOptionResponse — вариант поступления, рассчитанный после получения результатов ЕГЭ.
 type EducationOptionResponse struct {
-	UniversityID       int64    `json:"university_id"`
-	UniversityName     string   `json:"university_name"`
-	UniversityRegion   string   `json:"university_region"`
-	EducationProgramID int64    `json:"education_program_id"`
-	ProgramCode        string   `json:"program_code,omitempty"`
-	ProgramName        string   `json:"program_name"`
-	AdmissionYear      int16    `json:"admission_year"`
-	RequiredSubjects   []string `json:"required_subjects"`
-	MinimumTotalScore  *int16   `json:"minimum_total_score,omitempty"`
-	BudgetPassingScore *int16   `json:"budget_passing_score,omitempty"`
-	PaidPassingScore   *int16   `json:"paid_passing_score,omitempty"`
-	Explanation        []string `json:"explanation"`
+	UniversityID           int64    `json:"university_id"`
+	UniversityName         string   `json:"university_name"`
+	UniversityRegion       string   `json:"university_region"`
+	EducationProgramID     int64    `json:"education_program_id"`
+	ProgramCode            string   `json:"program_code,omitempty"`
+	ProgramName            string   `json:"program_name"`
+	AdmissionYear          int16    `json:"admission_year"`
+	RulesSourceYear        int16    `json:"rules_source_year"`
+	RequiredSubjects       []string `json:"required_subjects"`
+	MinimumTotalScore      *int16   `json:"minimum_total_score,omitempty"`
+	BudgetPassingScore     *int16   `json:"budget_passing_score,omitempty"`
+	PaidPassingScore       *int16   `json:"paid_passing_score,omitempty"`
+	PassingScoreSourceYear *int16   `json:"passing_score_source_year,omitempty"`
+	Explanation            []string `json:"explanation"`
 }
 
 // FindEducationOptionsRequest запускает подбор ОП и вузов после результатов ЕГЭ.
@@ -23,9 +25,18 @@ type FindEducationOptionsRequest struct {
 	ExpandGeography bool  `json:"expand_geography"`
 }
 
+// EducationOptionsDiagnosisResponse объясняет, почему после ЕГЭ не нашлось
+// доступных образовательных вариантов.
+type EducationOptionsDiagnosisResponse struct {
+	Reason              string `json:"reason"`
+	TargetAdmissionYear int16  `json:"target_admission_year"`
+	RulesSourceYear     *int16 `json:"rules_source_year,omitempty"`
+}
+
 // AdmissionPlanLimitsResponse сообщает актуальные для кампании лимиты плана подачи.
 type AdmissionPlanLimitsResponse struct {
 	AdmissionYear            int16 `json:"admission_year"`
+	RulesSourceYear          int16 `json:"rules_source_year"`
 	MaxUniversities          int16 `json:"max_universities"`
 	MaxProgramsPerUniversity int16 `json:"max_programs_per_university"`
 }

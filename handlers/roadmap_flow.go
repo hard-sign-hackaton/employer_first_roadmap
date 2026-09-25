@@ -13,6 +13,12 @@ import (
 	"github.com/max-messenger/maxbot"
 )
 
+const (
+	admissionProgramToggleCallback = "/admission_program_toggle"
+	admissionPlanDoneCallback      = "/admission_plan_done"
+	admissionPlanResetCallback     = "/admission_plan_reset"
+)
+
 func startRoadmapScenario(ctx maxbot.Context, roadmap dto.RoadmapResponse) error {
 	s := utils.GetSmallSurvey(ctx.Update().UserID)
 	s.RoadmapID = roadmap.ID
@@ -318,6 +324,14 @@ func handleRoadmapExamScore(ctx maxbot.Context, text string) error {
 }
 
 func showRoadmapUniversityOptions(ctx maxbot.Context, expandGeography bool) error {
+	return renderRoadmapUniversityOptions(ctx, expandGeography, false)
+}
+
+func editRoadmapUniversityOptions(ctx maxbot.Context, expandGeography bool) error {
+	return renderRoadmapUniversityOptions(ctx, expandGeography, true)
+}
+
+func renderRoadmapUniversityOptions(ctx maxbot.Context, expandGeography, edit bool) error {
 	id := ctx.Update().UserID
 	s := utils.GetSmallSurvey(id)
 	s.AdmissionProgramIDs = nil
@@ -327,6 +341,7 @@ func showRoadmapUniversityOptions(ctx maxbot.Context, expandGeography bool) erro
 	}
 	profile, profileErr := app.Profile.GetProfile(context.Background(), id)
 	searchAllRegions := expandGeography || (profileErr == nil && profile.WillingToRelocate)
+	s.AdmissionSearchAllRegions = searchAllRegions
 	options, err := app.Admission.FindEducationOptions(context.Background(), id, dto.FindEducationOptionsRequest{RoadmapID: s.RoadmapID, ExpandGeography: searchAllRegions})
 	if err != nil || len(options) == 0 {
 		return handleNoUniversityOptions(ctx, searchAllRegions)
@@ -344,12 +359,15 @@ func showRoadmapUniversityOptions(ctx maxbot.Context, expandGeography bool) erro
 		if admissionProgramSelected(s, option.EducationProgramID) {
 			label = "✓ " + label
 		}
-		kb.AddRow().AddMessage(label)
+		kb.AddRow().AddCallBack(label, fmt.Sprintf("%s:%d", admissionProgramToggleCallback, option.EducationProgramID))
 	}
-	kb.AddRow().AddMessage("Готово")
-	kb.AddRow().AddMessage("Сбросить выбор")
+	kb.AddRow().AddCallBack("Готово", admissionPlanDoneCallback)
+	kb.AddRow().AddCallBack("Сбросить выбор", admissionPlanResetCallback)
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapUniversityOptions)
 	text := "Этап 3. План поступления.\n\nПодобраны варианты под ваши результаты ЕГЭ и карьерное направление:\n\n" + strings.Join(lines, "\n\n") + "\n\nВыберите несколько программ, затем нажмите «Готово». Выбрано: " + strconv.Itoa(len(s.PlannedAdmissionProgramIDs))
+	if edit {
+		return ctx.Edit(text, maxbot.WithKeyboard(kb))
+	}
 	return ctx.Send(text, maxbot.WithKeyboard(kb))
 }
 
@@ -414,16 +432,75 @@ func toggleAdmissionProgram(ctx maxbot.Context, index int) error {
 		return ctx.Send("Не удалось определить выбранный вариант.")
 	}
 	programID := s.AdmissionProgramIDs[index]
+	toggleAdmissionProgramSelection(s, programID, index)
+	return showRoadmapUniversityOptions(ctx, s.AdmissionSearchAllRegions)
+}
+
+func toggleAdmissionProgramSelection(s *utils.SmallSurveyData, programID int64, index int) {
 	for selectedIndex, selectedID := range s.PlannedAdmissionProgramIDs {
 		if selectedID == programID {
 			s.PlannedAdmissionProgramIDs = append(s.PlannedAdmissionProgramIDs[:selectedIndex], s.PlannedAdmissionProgramIDs[selectedIndex+1:]...)
 			s.PlannedAdmissionProgramLines = append(s.PlannedAdmissionProgramLines[:selectedIndex], s.PlannedAdmissionProgramLines[selectedIndex+1:]...)
-			return showRoadmapUniversityOptions(ctx, false)
+			return
 		}
 	}
 	s.PlannedAdmissionProgramIDs = append(s.PlannedAdmissionProgramIDs, programID)
 	s.PlannedAdmissionProgramLines = append(s.PlannedAdmissionProgramLines, s.AdmissionOptionLines[index])
-	return showRoadmapUniversityOptions(ctx, false)
+}
+
+// AdmissionProgramToggle меняет выбор программы и редактирует исходное сообщение.
+func AdmissionProgramToggle(ctx maxbot.Context) error {
+	id := ctx.Update().UserID
+	if utils.GetUserState(id) != models.UserStateRoadmapUniversityOptions {
+		return ctx.Answer("Выбор программ уже завершён.")
+	}
+	payload := ctx.Update().GetCallbackPayload()
+	programID, err := strconv.ParseInt(payload.Param, 10, 64)
+	if err != nil {
+		return ctx.Answer("Не удалось определить программу.")
+	}
+	s := utils.GetSmallSurvey(id)
+	index := -1
+	for i, id := range s.AdmissionProgramIDs {
+		if id == programID {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return ctx.Answer("Этот список программ устарел. Откройте roadmap ещё раз.")
+	}
+	toggleAdmissionProgramSelection(s, programID, index)
+	if admissionProgramSelected(s, programID) {
+		_ = ctx.Answer("✓ Программа выбрана")
+	} else {
+		_ = ctx.Answer("Программа снята")
+	}
+	return editRoadmapUniversityOptions(ctx, s.AdmissionSearchAllRegions)
+}
+
+func AdmissionPlanReset(ctx maxbot.Context) error {
+	id := ctx.Update().UserID
+	if utils.GetUserState(id) != models.UserStateRoadmapUniversityOptions {
+		return ctx.Answer("Выбор программ уже завершён.")
+	}
+	s := utils.GetSmallSurvey(id)
+	s.PlannedAdmissionProgramIDs = nil
+	s.PlannedAdmissionProgramLines = nil
+	_ = ctx.Answer("Выбор очищен")
+	return editRoadmapUniversityOptions(ctx, s.AdmissionSearchAllRegions)
+}
+
+func AdmissionPlanDone(ctx maxbot.Context) error {
+	id := ctx.Update().UserID
+	if utils.GetUserState(id) != models.UserStateRoadmapUniversityOptions {
+		return ctx.Answer("Выбор программ уже завершён.")
+	}
+	if len(utils.GetSmallSurvey(id).PlannedAdmissionProgramIDs) == 0 {
+		return ctx.Answer("Выберите хотя бы одну программу.")
+	}
+	_ = ctx.Answer("План поступления сохраняется")
+	return saveAdmissionPlan(ctx)
 }
 
 func admissionProgramSelected(s *utils.SmallSurveyData, programID int64) bool {

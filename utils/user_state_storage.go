@@ -45,6 +45,7 @@ type SmallSurveyData struct {
 	ActualExamScores                       map[int64]int16
 	AdmissionProgramIDs                    []int64
 	AdmissionOptionLines                   []string
+	AdmissionSearchAllRegions              bool
 	PlannedAdmissionProgramIDs             []int64
 	PlannedAdmissionProgramLines           []string
 	AdmissionApplicationIDs                []int64

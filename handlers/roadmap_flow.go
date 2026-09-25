@@ -328,7 +328,12 @@ func showRoadmapUniversityOptions(ctx maxbot.Context, expandGeography bool) erro
 }
 
 func editRoadmapUniversityOptions(ctx maxbot.Context, expandGeography bool) error {
-	return renderRoadmapUniversityOptions(ctx, expandGeography, true)
+	s := utils.GetSmallSurvey(ctx.Update().UserID)
+	if len(s.AdmissionProgramIDs) == 0 {
+		return ctx.Answer("Список программ устарел. Откройте roadmap ещё раз.")
+	}
+	text, keyboard := admissionProgramsQuestion(s)
+	return ctx.Edit(text, maxbot.WithKeyboard(keyboard))
 }
 
 func renderRoadmapUniversityOptions(ctx maxbot.Context, expandGeography, edit bool) error {
@@ -336,6 +341,7 @@ func renderRoadmapUniversityOptions(ctx maxbot.Context, expandGeography, edit bo
 	s := utils.GetSmallSurvey(id)
 	s.AdmissionProgramIDs = nil
 	s.AdmissionOptionLines = nil
+	s.AdmissionOptionLabels = nil
 	if s.RoadmapID <= 0 {
 		return ctx.Send("Не удалось определить roadmap. Начните заново командой /start.")
 	}
@@ -346,29 +352,35 @@ func renderRoadmapUniversityOptions(ctx maxbot.Context, expandGeography, edit bo
 	if err != nil || len(options) == 0 {
 		return handleNoUniversityOptions(ctx, searchAllRegions)
 	}
-	lines := make([]string, 0, len(options))
-	kb := model.NewKeyboard()
 	for index, option := range options {
 		s.AdmissionProgramIDs = append(s.AdmissionProgramIDs, option.EducationProgramID)
 		line := fmt.Sprintf("%d. %s — «%s»\n   Регион: %s; правила ЕГЭ: %d; мин. сумма: %s; бюджет: %s; платно: %s%s",
 			index+1, option.UniversityName, option.ProgramName, option.UniversityRegion,
 			option.RulesSourceYear, scoreOrDash(option.MinimumTotalScore), scoreOrDash(option.BudgetPassingScore), scoreOrDash(option.PaidPassingScore), passingScoreSourceLabel(option.PassingScoreSourceYear))
-		lines = append(lines, line)
 		s.AdmissionOptionLines = append(s.AdmissionOptionLines, line)
-		label := fmt.Sprintf("%d. %s", index+1, option.UniversityName)
-		if admissionProgramSelected(s, option.EducationProgramID) {
-			label = "✓ " + label
-		}
-		kb.AddRow().AddCallBack(label, fmt.Sprintf("%s:%d", admissionProgramToggleCallback, option.EducationProgramID))
+		s.AdmissionOptionLabels = append(s.AdmissionOptionLabels, fmt.Sprintf("%d. %s", index+1, option.UniversityName))
 	}
-	kb.AddRow().AddCallBack("Готово", admissionPlanDoneCallback)
-	kb.AddRow().AddCallBack("Сбросить выбор", admissionPlanResetCallback)
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapUniversityOptions)
-	text := "Этап 3. План поступления.\n\nПодобраны варианты под ваши результаты ЕГЭ и карьерное направление:\n\n" + strings.Join(lines, "\n\n") + "\n\nВыберите несколько программ, затем нажмите «Готово». Выбрано: " + strconv.Itoa(len(s.PlannedAdmissionProgramIDs))
+	text, kb := admissionProgramsQuestion(s)
 	if edit {
 		return ctx.Edit(text, maxbot.WithKeyboard(kb))
 	}
 	return ctx.Send(text, maxbot.WithKeyboard(kb))
+}
+
+func admissionProgramsQuestion(s *utils.SmallSurveyData) (string, *model.Keyboard) {
+	kb := model.NewKeyboard()
+	for index, programID := range s.AdmissionProgramIDs {
+		label := s.AdmissionOptionLabels[index]
+		if admissionProgramSelected(s, programID) {
+			label = "✓ " + label
+		}
+		kb.AddRow().AddCallBack(label, fmt.Sprintf("%s:%d", admissionProgramToggleCallback, programID))
+	}
+	kb.AddRow().AddCallBack("Готово", admissionPlanDoneCallback)
+	kb.AddRow().AddCallBack("Сбросить выбор", admissionPlanResetCallback)
+	text := "Этап 3. План поступления.\n\nПодобраны варианты под ваши результаты ЕГЭ и карьерное направление:\n\n" + strings.Join(s.AdmissionOptionLines, "\n\n") + "\n\nВыберите несколько программ, затем нажмите «Готово». Выбрано: " + strconv.Itoa(len(s.PlannedAdmissionProgramIDs))
+	return text, kb
 }
 
 func handleNoUniversityOptions(ctx maxbot.Context, expandGeography bool) error {
@@ -377,6 +389,7 @@ func handleNoUniversityOptions(ctx maxbot.Context, expandGeography bool) error {
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapUniversityOptions)
 	s.AdmissionProgramIDs = nil
 	s.AdmissionOptionLines = nil
+	s.AdmissionOptionLabels = nil
 	profile, profileErr := app.Profile.GetProfile(context.Background(), id)
 	willingToRelocate := profileErr == nil && profile.WillingToRelocate
 	diagnosis, diagnosisErr := app.Admission.DiagnoseEducationOptions(context.Background(), id, dto.FindEducationOptionsRequest{RoadmapID: s.RoadmapID, ExpandGeography: expandGeography})
@@ -471,10 +484,11 @@ func AdmissionProgramToggle(ctx maxbot.Context) error {
 		return ctx.Answer("Этот список программ устарел. Откройте roadmap ещё раз.")
 	}
 	toggleAdmissionProgramSelection(s, programID, index)
+	programLabel := s.AdmissionOptionLabels[index]
 	if admissionProgramSelected(s, programID) {
-		_ = ctx.Answer("✓ Программа выбрана")
+		_ = ctx.Answer("✓ Выбрано: " + programLabel)
 	} else {
-		_ = ctx.Answer("Программа снята")
+		_ = ctx.Answer("Снято: " + programLabel)
 	}
 	return editRoadmapUniversityOptions(ctx, s.AdmissionSearchAllRegions)
 }

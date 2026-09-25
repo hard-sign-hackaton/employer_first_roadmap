@@ -31,7 +31,7 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 	switch state {
 	case models.UserStateRoadmapOverview:
 		switch text {
-		case "Продолжить":
+		case "Продолжить", "Начать обучение", "Открыть возможность работодателя", "Подать заявку в компанию":
 			return continueActiveRoadmap(ctx)
 		case "Показать весь план":
 			return showCurrentActiveRoadmap(ctx)
@@ -103,9 +103,9 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 		}
 		return saveEnrollmentChoice(ctx, index)
 	case models.UserStateRoadmapLearning:
-		if text == "Перейти к возможности работодателя" {
+		if isStartOpportunityAction(text) {
 			completeNextRoadmapStep(ctx)
-			return showCurrentActiveRoadmap(ctx)
+			return showEmployerExperience(ctx)
 		}
 		return ctx.Send("Выберите действие с клавиатуры.")
 	case models.UserStateRoadmapEmployerExperience:
@@ -161,7 +161,7 @@ func showActiveRoadmap(ctx maxbot.Context, roadmap dto.RoadmapResponse) error {
 	}
 	text += "\n\nСледующее действие: " + roadmap.NextAction.Title
 	kb := model.NewKeyboard()
-	kb.AddRow().AddMessage("Продолжить")
+	kb.AddRow().AddMessage(roadmapPrimaryAction(roadmap.NextAction.StepType))
 	kb.AddRow().AddMessage("Показать весь план")
 	return ctx.Send(text, maxbot.WithKeyboard(kb))
 }
@@ -213,6 +213,19 @@ func continueActiveRoadmap(ctx maxbot.Context) error {
 		return showEmployerApplication(ctx)
 	default:
 		return ctx.Send("Для этого шага пока нет интерактивного действия.")
+	}
+}
+
+func roadmapPrimaryAction(stepType string) string {
+	switch stepType {
+	case models.RoadmapStepTypeLearnAtUniversity:
+		return "Начать обучение"
+	case models.RoadmapStepTypeEmployerExperience:
+		return "Открыть возможность работодателя"
+	case models.RoadmapStepTypeApplyToEmployer:
+		return "Подать заявку в компанию"
+	default:
+		return "Продолжить"
 	}
 }
 
@@ -602,7 +615,10 @@ func saveEnrollmentChoice(ctx maxbot.Context, index int) error {
 	}
 	completeNextRoadmapStep(ctx)
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapOverview)
-	return ctx.Send("Итог зачисления сохранён. Roadmap уточнён для выбранного вуза; следующий шаг — обучение.")
+	if err := ctx.Send("Итог зачисления сохранён. Следующий шаг — обучение в выбранном вузе."); err != nil {
+		return err
+	}
+	return showCurrentActiveRoadmap(ctx)
 }
 
 func showLearningProgress(ctx maxbot.Context) error {
@@ -618,11 +634,44 @@ func showLearningProgress(ctx maxbot.Context) error {
 	kb := model.NewKeyboard()
 	if opportunity, err := app.Roadmap.GetEmployerOpportunity(context.Background(), id, dto.GetRoadmapRequest{RoadmapID: s.RoadmapID}); err == nil {
 		text += fmt.Sprintf("\n\nВ каталоге есть возможность работодателя: %s. Она доступна с %d курса.", opportunity.Name, opportunity.MinStudyYear)
-		kb.AddRow().AddMessage("Перейти к возможности работодателя")
+		kb.AddRow().AddMessage(startOpportunityAction(opportunity.Type))
 	} else {
 		text += "\n\nДля выбранной программы в каталоге пока нет возможности работодателя."
 	}
 	return ctx.Send(text, maxbot.WithKeyboard(kb))
+}
+
+func startOpportunityAction(opportunityType string) string {
+	switch opportunityType {
+	case models.OpportunityTypeInternship:
+		return "Начать стажировку"
+	case models.OpportunityTypePractice:
+		return "Начать практику"
+	case models.OpportunityTypeProject:
+		return "Начать проект"
+	case models.OpportunityTypeHackathon:
+		return "Начать хакатон"
+	case models.OpportunityTypeTargetedTraining:
+		return "Начать целевое обучение"
+	default:
+		return "Начать возможность работодателя"
+	}
+}
+
+func isStartOpportunityAction(text string) bool {
+	for _, opportunityType := range []string{
+		models.OpportunityTypeInternship,
+		models.OpportunityTypePractice,
+		models.OpportunityTypeProject,
+		models.OpportunityTypeHackathon,
+		models.OpportunityTypeTargetedTraining,
+		"",
+	} {
+		if text == startOpportunityAction(opportunityType) {
+			return true
+		}
+	}
+	return false
 }
 
 func showEmployerExperience(ctx maxbot.Context) error {

@@ -352,11 +352,31 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 	if err != nil || roadmapAfterEnrollment.EnrollmentChoice == nil || roadmapAfterEnrollment.EnrollmentChoice.AdmissionApplicationID == nil || *roadmapAfterEnrollment.EnrollmentChoice.AdmissionApplicationID != applicationID {
 		t.Fatalf("roadmap must retain final enrollment choice: %v; choice=%#v", err, roadmapAfterEnrollment.EnrollmentChoice)
 	}
+	for index := 0; index < 5; index++ {
+		current, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
+		if err != nil || current.NextAction == nil {
+			t.Fatalf("get pre-enrollment step %d: %v; roadmap=%#v", index, err, current)
+		}
+		if _, err := roadmapService.UpdateRoadmapStep(ctx, userID, dto.GetRoadmapStepRequest{RoadmapID: roadmap.ID, StepID: current.NextAction.ID}, dto.UpdateRoadmapStepRequest{Status: models.RoadmapStepStatusCompleted}); err != nil {
+			t.Fatalf("complete pre-enrollment step %d: %v", index, err)
+		}
+	}
+	confirmEnrollment, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
+	if err != nil || confirmEnrollment.NextAction == nil || confirmEnrollment.NextAction.StepType != models.RoadmapStepTypeConfirmEnrollment {
+		t.Fatalf("next step must be enrollment confirmation: %v; roadmap=%#v", err, confirmEnrollment)
+	}
+	if _, err := roadmapService.UpdateRoadmapStep(ctx, userID, dto.GetRoadmapStepRequest{RoadmapID: roadmap.ID, StepID: confirmEnrollment.NextAction.ID}, dto.UpdateRoadmapStepRequest{Status: models.RoadmapStepStatusCompleted}); err != nil {
+		t.Fatalf("complete enrollment confirmation: %v", err)
+	}
+	learningRoadmap, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
+	if err != nil || learningRoadmap.NextAction == nil || learningRoadmap.NextAction.StepType != models.RoadmapStepTypeLearnAtUniversity {
+		t.Fatalf("next step must be learning: %v; roadmap=%#v", err, learningRoadmap)
+	}
 	opportunity, err := roadmapService.GetEmployerOpportunity(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
 	if err != nil || !opportunity.IsAvailable || opportunity.Name == "" {
 		t.Fatalf("get employer opportunity: %v; opportunity=%#v", err, opportunity)
 	}
-	for index := 0; index < 8; index++ {
+	for index := 0; index < 2; index++ {
 		current, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
 		if err != nil || current.NextAction == nil {
 			t.Fatalf("get current roadmap step %d: %v; roadmap=%#v", index, err, current)

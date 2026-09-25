@@ -356,7 +356,7 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 	if err != nil || !opportunity.IsAvailable || opportunity.Name == "" {
 		t.Fatalf("get employer opportunity: %v; opportunity=%#v", err, opportunity)
 	}
-	for index := 0; index < 7; index++ {
+	for index := 0; index < 8; index++ {
 		current, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
 		if err != nil || current.NextAction == nil {
 			t.Fatalf("get current roadmap step %d: %v; roadmap=%#v", index, err, current)

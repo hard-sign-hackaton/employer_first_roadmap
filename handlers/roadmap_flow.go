@@ -200,11 +200,10 @@ func continueActiveRoadmap(ctx maxbot.Context) error {
 		kb := model.NewKeyboard()
 		kb.AddRow().AddMessage("Документы поданы")
 		return ctx.Send("План подачи сохранён. Подайте документы в выбранные вузы и отметьте этот шаг после подачи.", maxbot.WithKeyboard(kb))
+	case models.RoadmapStepTypeConfirmEnrollment:
+		return showEnrollmentChoice(ctx)
 	case models.RoadmapStepTypeLearnAtUniversity:
-		if roadmap.EnrollmentChoice == nil {
-			return showEnrollmentChoice(ctx)
-		}
-		if roadmap.EnrollmentChoice.Status != models.EnrollmentStatusChosen {
+		if roadmap.EnrollmentChoice == nil || roadmap.EnrollmentChoice.Status != models.EnrollmentStatusChosen {
 			return ctx.Send("Итог приёмной кампании не подтверждён. Вернитесь к выбору результата поступления.")
 		}
 		return showLearningProgress(ctx)
@@ -601,6 +600,7 @@ func saveEnrollmentChoice(ctx maxbot.Context, index int) error {
 		dto.SaveEnrollmentChoiceRequest{Status: models.EnrollmentStatusChosen, AdmissionApplicationID: &applicationID}); err != nil {
 		return ctx.Send("Не удалось сохранить итог зачисления. Попробуйте позже.")
 	}
+	completeNextRoadmapStep(ctx)
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapOverview)
 	return ctx.Send("Итог зачисления сохранён. Roadmap уточнён для выбранного вуза; следующий шаг — обучение.")
 }

@@ -31,6 +31,7 @@ const (
 	RoadmapStepTypePassExams                = "pass_exams"
 	RoadmapStepTypeChooseUniversity         = "choose_university"
 	RoadmapStepTypeSubmitAdmissionDocuments = "submit_admission_documents"
+	RoadmapStepTypeConfirmEnrollment        = "confirm_enrollment"
 	RoadmapStepTypeLearnAtUniversity        = "learn_at_university"
 	RoadmapStepTypeEmployerExperience       = "employer_experience"
 	RoadmapStepTypeApplyToEmployer          = "apply_to_employer"

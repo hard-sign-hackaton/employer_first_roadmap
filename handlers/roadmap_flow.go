@@ -97,13 +97,7 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 		}
 		return saveEnrollmentChoice(ctx, index)
 	case models.UserStateRoadmapLearning:
-		switch text {
-		case "Перейти на следующий курс":
-			if _, err := app.Roadmap.AdvanceStudyYear(context.Background(), id, dto.GetRoadmapRequest{RoadmapID: s.RoadmapID}); err != nil {
-				return ctx.Send("Не удалось обновить курс: " + err.Error())
-			}
-			return showLearningProgress(ctx)
-		case "Перейти к возможности работодателя":
+		if text == "Перейти к возможности работодателя" {
 			completeNextRoadmapStep(ctx)
 			return showCurrentActiveRoadmap(ctx)
 		}
@@ -523,16 +517,13 @@ func showLearningProgress(ctx maxbot.Context) error {
 	}
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapLearning)
 	choice := roadmap.EnrollmentChoice
-	text := fmt.Sprintf("Учебный этап: %s — «%s». Текущий курс: %d.", choice.UniversityName, choice.EducationProgramName, choice.CurrentStudyYear)
+	text := fmt.Sprintf("Учебный этап: %s — «%s».", choice.UniversityName, choice.EducationProgramName)
 	kb := model.NewKeyboard()
-	if choice.CurrentStudyYear < 6 {
-		kb.AddRow().AddMessage("Перейти на следующий курс")
-	}
 	if opportunity, err := app.Roadmap.GetEmployerOpportunity(context.Background(), id, dto.GetRoadmapRequest{RoadmapID: s.RoadmapID}); err == nil {
-		text += fmt.Sprintf("\n\nВ каталоге есть доступная возможность: %s. Она доступна с %d курса.", opportunity.Name, opportunity.MinStudyYear)
+		text += fmt.Sprintf("\n\nВ каталоге есть возможность работодателя: %s. Она доступна с %d курса.", opportunity.Name, opportunity.MinStudyYear)
 		kb.AddRow().AddMessage("Перейти к возможности работодателя")
 	} else {
-		text += "\n\nВ каталоге пока нет доступной возможности работодателя для текущего курса."
+		text += "\n\nДля выбранной программы в каталоге пока нет возможности работодателя."
 	}
 	return ctx.Send(text, maxbot.WithKeyboard(kb))
 }

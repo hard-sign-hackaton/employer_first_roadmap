@@ -208,7 +208,6 @@ func (s *admissionService) SaveEnrollmentChoice(ctx context.Context, userID int6
 		AdmissionApplicationID: request.AdmissionApplicationID,
 		Status:                 request.Status,
 		EnrollmentYear:         request.EnrollmentYear,
-		CurrentStudyYear:       1,
 		DecidedAt:              time.Now().UTC(),
 	})
 	if err != nil {
@@ -551,7 +550,6 @@ func enrollmentChoiceResponse(choice models.RoadmapEnrollmentChoice) dto.Enrollm
 		Status:                 choice.Status,
 		AdmissionApplicationID: choice.AdmissionApplicationID,
 		EnrollmentYear:         choice.EnrollmentYear,
-		CurrentStudyYear:       choice.CurrentStudyYear,
 	}
 	if choice.AdmissionApplication != nil {
 		response.UniversityName = choice.AdmissionApplication.EducationProgram.University.Name

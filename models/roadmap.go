@@ -93,7 +93,6 @@ type RoadmapEnrollmentChoice struct {
 	AdmissionApplicationID *int64    `json:"admission_application_id"`
 	Status                 string    `json:"status" gorm:"size:16;not null;check:status IN ('chosen','not_enrolled')"`
 	EnrollmentYear         *int16    `json:"enrollment_year" gorm:"check:enrollment_year BETWEEN 2020 AND 2100"`
-	CurrentStudyYear       int16     `json:"current_study_year" gorm:"not null;default:1;check:current_study_year BETWEEN 1 AND 6"`
 	DecidedAt              time.Time `json:"decided_at"`
 
 	AdmissionApplication *RoadmapAdmissionApplication `json:"admission_application,omitempty" gorm:"foreignKey:AdmissionApplicationID"`

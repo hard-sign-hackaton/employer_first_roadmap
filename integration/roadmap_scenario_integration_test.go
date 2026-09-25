@@ -345,18 +345,9 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 	if err != nil || roadmapAfterEnrollment.EnrollmentChoice == nil || roadmapAfterEnrollment.EnrollmentChoice.AdmissionApplicationID == nil || *roadmapAfterEnrollment.EnrollmentChoice.AdmissionApplicationID != applicationID {
 		t.Fatalf("roadmap must retain final enrollment choice: %v; choice=%#v", err, roadmapAfterEnrollment.EnrollmentChoice)
 	}
-	if _, err := roadmapService.GetEmployerOpportunity(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID}); err == nil {
-		t.Fatal("employer opportunity must not be available on the first study year")
-	}
-	if _, err := roadmapService.AdvanceStudyYear(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID}); err != nil {
-		t.Fatalf("advance to second study year: %v", err)
-	}
-	if _, err := roadmapService.AdvanceStudyYear(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID}); err != nil {
-		t.Fatalf("advance to third study year: %v", err)
-	}
 	opportunity, err := roadmapService.GetEmployerOpportunity(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
 	if err != nil || !opportunity.IsAvailable || opportunity.Name == "" {
-		t.Fatalf("get employer opportunity on eligible course: %v; opportunity=%#v", err, opportunity)
+		t.Fatalf("get employer opportunity: %v; opportunity=%#v", err, opportunity)
 	}
 	for index := 0; index < 7; index++ {
 		current, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})

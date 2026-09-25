@@ -32,9 +32,6 @@ type RoadmapService interface {
 	// Вход: dto.GetRoadmapRequest и идентификатор пользователя. Выход: dto.CompanyOpportunityResponse.
 	GetEmployerOpportunity(ctx context.Context, userID int64, request dto.GetRoadmapRequest) (dto.CompanyOpportunityResponse, error)
 
-	// AdvanceStudyYear фиксирует переход на следующий курс и возвращает обновлённый итог зачисления.
-	AdvanceStudyYear(ctx context.Context, userID int64, request dto.GetRoadmapRequest) (dto.EnrollmentChoiceResponse, error)
-
 	// SubmitEmployerApplication сохраняет подачу заявки только после завершённого практического шага.
 	SubmitEmployerApplication(ctx context.Context, userID int64, request dto.GetRoadmapRequest) (dto.EmployerApplicationResponse, error)
 }

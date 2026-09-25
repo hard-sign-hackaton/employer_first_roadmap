@@ -157,9 +157,6 @@ func (s *roadmapService) GetEmployerOpportunity(ctx context.Context, userID int6
 	if opportunity == nil {
 		return dto.CompanyOpportunityResponse{}, fmt.Errorf("no employer opportunity is configured for the selected program")
 	}
-	if roadmap.EnrollmentChoice.CurrentStudyYear < opportunity.MinStudyYear {
-		return dto.CompanyOpportunityResponse{}, fmt.Errorf("employer opportunity is available from study year %d", opportunity.MinStudyYear)
-	}
 	return dto.CompanyOpportunityResponse{
 		ID:           opportunity.ID,
 		Type:         opportunity.Type,
@@ -169,27 +166,6 @@ func (s *roadmapService) GetEmployerOpportunity(ctx context.Context, userID int6
 		MinStudyYear: opportunity.MinStudyYear,
 		IsAvailable:  opportunity.IsActive,
 	}, nil
-}
-
-func (s *roadmapService) AdvanceStudyYear(ctx context.Context, userID int64, request dto.GetRoadmapRequest) (dto.EnrollmentChoiceResponse, error) {
-	roadmap, err := s.roadmaps.FindRoadmapByID(ctx, userID, request.RoadmapID)
-	if err != nil {
-		return dto.EnrollmentChoiceResponse{}, fmt.Errorf("find roadmap: %w", err)
-	}
-	choice := roadmap.EnrollmentChoice
-	if roadmap.Status != models.RoadmapStatusActive || choice == nil || choice.Status != models.EnrollmentStatusChosen {
-		return dto.EnrollmentChoiceResponse{}, fmt.Errorf("an active enrolled roadmap is required")
-	}
-	if choice.CurrentStudyYear >= 6 {
-		return dto.EnrollmentChoiceResponse{}, fmt.Errorf("maximum study year has already been reached")
-	}
-	choice.CurrentStudyYear++
-	choice.DecidedAt = time.Now().UTC()
-	saved, err := s.roadmaps.SaveEnrollmentChoice(ctx, *choice)
-	if err != nil {
-		return dto.EnrollmentChoiceResponse{}, fmt.Errorf("update study year: %w", err)
-	}
-	return enrollmentChoiceResponse(saved), nil
 }
 
 func (s *roadmapService) SubmitEmployerApplication(ctx context.Context, userID int64, request dto.GetRoadmapRequest) (dto.EmployerApplicationResponse, error) {

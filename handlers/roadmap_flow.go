@@ -512,7 +512,7 @@ func handleNoUniversityOptions(ctx maxbot.Context, expandGeography bool) error {
 		kb.AddRow().AddMessage("Расширить географию поиска")
 		kb.AddRow().AddMessage("Пересмотреть траекторию")
 		utils.UpdateUserStateStorage(id, models.UserStateRoadmapPostAdmission)
-		return ctx.Send("По вашим ЕГЭ и баллам подходящие программы есть, но в регионе «"+profile.Region.Name+"» их нет в демо-каталоге.\n\nВы указали, что не готовы к переезду. Хотите посмотреть варианты в других регионах?", maxbot.WithKeyboard(kb))
+		return ctx.Send("По вашим ЕГЭ и баллам подходящие программы есть, но в регионе «"+profile.Region.Name+"» их нет в каталоге работодателей.\n\nВы указали, что не готовы к переезду. Хотите посмотреть варианты в других регионах?", maxbot.WithKeyboard(kb))
 	}
 	kb := model.NewKeyboard()
 	kb.AddRow().AddMessage("Пересмотреть траекторию")
@@ -525,7 +525,7 @@ func noUniversityOptionsMessage(diagnosis dto.EducationOptionsDiagnosisResponse)
 	case "missing_exam_results":
 		return "Не найдены фактические баллы ЕГЭ. Укажите балл хотя бы по одному предмету и попробуйте снова."
 	case "no_catalog_data":
-		return "Для выбранного карьерного направления в демо-каталоге пока нет образовательных программ с опубликованными правилами ЕГЭ."
+		return "Для выбранного карьерного направления в каталоге работодателей пока нет образовательных программ с опубликованными правилами ЕГЭ."
 	case "exam_subjects_mismatch":
 		return "В базе есть программы для выбранного направления, но ни одна их комбинация ЕГЭ не совпадает с сохранёнными предметами. Пересмотрите набор ЕГЭ или направление."
 	case "minimum_scores_not_met":

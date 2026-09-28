@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"efr_bot/database"
+	"efr_bot/employerapi"
 	"efr_bot/handlers"
 	"efr_bot/repositories"
 	"efr_bot/services"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
@@ -54,6 +56,27 @@ func main() {
 		Roadmap:    services.NewRoadmapService(roadmapRepository, careerRepository),
 		Admission:  services.NewAdmissionService(educationRepository, profileRepository, roadmapRepository, careerRepository),
 	})
+
+	// Employer API and the bot use the same PostgreSQL catalog. Once an
+	// employer saves a catalog, the existing bot services immediately read it.
+	apiPort := os.Getenv("EMPLOYER_API_PORT")
+	if apiPort == "" {
+		apiPort = "8080"
+	}
+	apiServer := &http.Server{
+		Addr:              ":" + apiPort,
+		Handler:           employerapi.NewHandler(employerapi.NewStore(db), os.Getenv("EMPLOYER_API_KEY"), os.Getenv("EMPLOYER_ALLOWED_ORIGIN")),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	go func() {
+		log.Printf("Employer API слушает порт %s", apiPort)
+		if err := apiServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Employer API остановлен: %v", err)
+		}
+	}()
 
 	// Получение токена бота из переменных окружения
 	access_token := os.Getenv("BOT_TOKEN")

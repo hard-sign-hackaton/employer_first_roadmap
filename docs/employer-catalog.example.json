@@ -1,0 +1,64 @@
+{
+  "company": {
+    "name": "ООО Технологии будущего",
+    "description": "Разрабатываем цифровые продукты для промышленности.",
+    "website_url": "https://example.com"
+  },
+  "admission_rule": {
+    "admission_year": 2027,
+    "max_universities": 5,
+    "max_programs_per_university": 5
+  },
+  "directions": [
+    {
+      "name": "Backend-разработчик",
+      "description": "Разработка высоконагруженных сервисов на Go.",
+      "interest_tags": [
+        { "name": "Программирование", "weight": 1.0 },
+        { "name": "Математика", "weight": 0.6 }
+      ],
+      "education_programs": [
+        {
+          "code": "09.03.04",
+          "name": "Программная инженерия",
+          "description": "Бакалаврская программа по разработке ПО.",
+          "university": {
+            "name": "Пермский технологический университет",
+            "description": "Технический университет.",
+            "website_url": "https://university.example.com",
+            "region": "Пермский край"
+          },
+          "exam_combinations": [
+            {
+              "admission_year": 2027,
+              "name": "Основная комбинация",
+              "subjects": [
+                { "name": "Русский язык", "min_score": 40 },
+                { "name": "Математика (профильная)", "min_score": 45 },
+                { "name": "Информатика", "min_score": 44 }
+              ]
+            }
+          ],
+          "admission_scores": [
+            {
+              "admission_year": 2026,
+              "budget_passing_score": 245,
+              "paid_passing_score": 180
+            }
+          ]
+        }
+      ],
+      "opportunities": [
+        {
+          "type": "internship",
+          "name": "Стажировка Go-разработчика",
+          "description": "Три месяца в продуктовой команде с наставником.",
+          "url": "https://example.com/career/go-internship",
+          "min_study_year": 2,
+          "region": "Пермский край",
+          "is_active": true
+        }
+      ]
+    }
+  ]
+}

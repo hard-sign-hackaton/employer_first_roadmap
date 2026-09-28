@@ -15,8 +15,13 @@ services:
 
   efr_bot:
     build: ./
+    ports:
+      - "${EMPLOYER_API_PORT:-8080}:${EMPLOYER_API_PORT:-8080}"
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
+      - EMPLOYER_API_PORT=${EMPLOYER_API_PORT:-8080}
+      - EMPLOYER_API_KEY=${EMPLOYER_API_KEY:-}
+      - EMPLOYER_ALLOWED_ORIGIN=${EMPLOYER_ALLOWED_ORIGIN:-}
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=${POSTGRES_DB:-employer_first_roadmap}

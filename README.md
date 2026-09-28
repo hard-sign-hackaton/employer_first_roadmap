@@ -1,7 +1,39 @@
 ### Формат .env файла
 ```
 BOT_TOKEN="token"
+EMPLOYER_API_PORT=8080
+EMPLOYER_API_KEY="replace-with-a-secret"
+EMPLOYER_ALLOWED_ORIGIN="http://localhost:3000"
 ```
+
+### API работодателя
+
+API запускается вместе с ботом на `EMPLOYER_API_PORT` и сохраняет данные в ту
+же PostgreSQL, из которой пользовательские сценарии получают компании,
+направления, ЕГЭ, вузы и возможности работодателя. `SEED_DEMO_DATA=false`
+оставляет единственным источником каталога данные, введённые работодателем.
+
+Ручки:
+
+- `POST /api/v1/employer/catalog` — создать полный каталог работодателя;
+- `GET /api/v1/employer/catalog/{companyID}` — получить сохранённую форму;
+- `PUT /api/v1/employer/catalog/{companyID}` — атомарно обновить каталог;
+- `PATCH /api/v1/employer/opportunities/{opportunityID}/status` — быстро
+  включить или выключить стажировку, практику, проект либо целевое обучение;
+- `GET /api/v1/employer/reference-data` — справочники и допустимые enum;
+- `GET /healthz` — проверка процесса без авторизации.
+
+Все ручки `/api/v1/employer/*` принимают ключ как
+`Authorization: Bearer <EMPLOYER_API_KEY>` либо `X-API-Key`. Если переменная не
+задана, авторизация отключена — это удобно только для локальной разработки.
+Для браузерной формы укажите её точный origin в `EMPLOYER_ALLOWED_ORIGIN`.
+
+Пример создания связного каталога находится в
+[`docs/employer-catalog.example.json`](docs/employer-catalog.example.json).
+Запрос создаётся транзакционно: при ошибке ни одна часть формы не сохраняется.
+Для нового направления без блока `roadmap` API создаёт обязательные девять
+шагов бота автоматически. В пользовательском окружении не включайте
+`APP_ENV=demo` и не задавайте `SEED_DEMO_DATA=true`.
 
 ### Запуск через Docker Compose
 ```bash

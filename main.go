@@ -81,11 +81,6 @@ func main() {
 	bot.HandleCallback("/admission_plan_done", handlers.AdmissionPlanDone)
 	bot.HandleCallback("/admission_plan_reset", handlers.AdmissionPlanReset)
 
-	// Старые кнопки demo-меню тоже возвращают пользователя в актуальный сценарий опроса.
-	bot.HandleCallback("/menu", handlers.CallMenu)
-	bot.HandleCallback("/demo", handlers.CallMenu)
-	bot.HandleCallback("/form", handlers.CallMenu)
-
 	// Запуск бота и начало мониторинга событий
 	log.Println("Бот запускается...")
 	bot.Start()

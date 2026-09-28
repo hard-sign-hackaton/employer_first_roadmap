@@ -10,11 +10,8 @@ import (
 )
 
 func CreateUser(ctx maxbot.Context) error {
-	// TODO: создание записи о пользователе в бд
 	userID := ctx.Update().UserID
-
 	utils.UpdateUserStateStorage(userID, UserStateStart)
-
 	return CallMenu(ctx)
 }
 
@@ -41,12 +38,8 @@ func CallMenu(ctx maxbot.Context) error {
 	case UserStateStart:
 		kb.AddRow().AddCallBack("Да", "/small_survey").AddCallBack("Нет", "/big_survey")
 		return ctx.Send("Вы знаете компанию, в которой хотели бы работать?", maxbot.WithKeyboard(kb))
-	case UserStateSurveyCompleted:
-		// TODO: получать список направлений из бд
-		kb.AddRow().AddCallBack("Работа 1", "/")
-		kb.AddRow().AddCallBack("Работа 2", "/")
-		kb.AddRow().AddCallBack("Работа 3", "/")
-		return ctx.Send("Вот возможные профессии для работы в выбраной компании:", maxbot.WithKeyboard(kb))
+	default:
+		return nil
 	}
 
 	return nil

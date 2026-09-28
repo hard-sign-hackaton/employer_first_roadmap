@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"efr_bot/models"
 	"gorm.io/gorm"
@@ -149,7 +150,7 @@ func replaceInterestTags(tx *gorm.DB, directionID int64, inputs []InterestTagInp
 	}
 	for _, input := range inputs {
 		tag := models.InterestTag{Name: strings.TrimSpace(input.Name)}
-		if err := tx.Where("LOWER(name) = LOWER(?)", tag.Name).FirstOrCreate(&tag).Error; err != nil {
+		if err := findOrCreateNamed(tx, &tag, tag.Name); err != nil {
 			return fmt.Errorf("save interest tag %q: %w", input.Name, err)
 		}
 		link := models.CareerDirectionInterestTag{CareerDirectionID: directionID, InterestTagID: tag.ID, Weight: input.Weight}
@@ -162,7 +163,7 @@ func replaceInterestTags(tx *gorm.DB, directionID int64, inputs []InterestTagInp
 
 func saveEducationProgram(tx *gorm.DB, input EducationProgramInput) (models.EducationProgram, error) {
 	region := models.Region{Name: strings.TrimSpace(input.University.Region)}
-	if err := tx.Where("LOWER(name) = LOWER(?)", region.Name).FirstOrCreate(&region).Error; err != nil {
+	if err := findOrCreateNamed(tx, &region, region.Name); err != nil {
 		return models.EducationProgram{}, fmt.Errorf("save region %q: %w", region.Name, err)
 	}
 
@@ -250,7 +251,7 @@ func saveExamCombination(tx *gorm.DB, programID int64, input ExamCombinationInpu
 	}
 	for _, subjectInput := range input.Subjects {
 		subject := models.ExamSubject{Name: strings.TrimSpace(subjectInput.Name)}
-		if err := tx.Where("LOWER(name) = LOWER(?)", subject.Name).FirstOrCreate(&subject).Error; err != nil {
+		if err := findOrCreateNamed(tx, &subject, subject.Name); err != nil {
 			return fmt.Errorf("save exam subject %q: %w", subject.Name, err)
 		}
 		item := models.ExamCombinationItem{ExamCombinationID: combination.ID, ExamSubjectID: subject.ID, MinScore: subjectInput.MinScore}
@@ -282,7 +283,7 @@ func saveOpportunity(tx *gorm.DB, companyID, directionID int64, input Opportunit
 	var regionID *int64
 	if strings.TrimSpace(input.Region) != "" {
 		region := models.Region{Name: strings.TrimSpace(input.Region)}
-		if err := tx.Where("LOWER(name) = LOWER(?)", region.Name).FirstOrCreate(&region).Error; err != nil {
+		if err := findOrCreateNamed(tx, &region, region.Name); err != nil {
 			return opportunity, fmt.Errorf("save opportunity region: %w", err)
 		}
 		regionID = &region.ID
@@ -307,6 +308,22 @@ func saveOpportunity(tx *gorm.DB, companyID, directionID int64, input Opportunit
 		return opportunity, fmt.Errorf("save opportunity %q: %w", opportunity.Name, err)
 	}
 	return opportunity, nil
+}
+
+func findOrCreateNamed[T interface {
+	models.Region | models.InterestTag | models.ExamSubject
+}](tx *gorm.DB, value *T, name string) error {
+	err := tx.Where("LOWER(name) = LOWER(?)", name).First(value).Error
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(value).Error; err != nil {
+		return err
+	}
+	return tx.Where("LOWER(name) = LOWER(?)", name).First(value).Error
 }
 
 func saveRoadmapTemplate(tx *gorm.DB, directionID int64, input RoadmapTemplateInput) error {
@@ -343,4 +360,69 @@ func (s *Store) SetOpportunityStatus(ctx context.Context, opportunityID int64, a
 		return fmt.Errorf("%w: opportunity %d", ErrNotFound, opportunityID)
 	}
 	return nil
+}
+
+func (s *Store) ListEmployerApplications(ctx context.Context, companyID int64) ([]EmployerApplicationListItem, error) {
+	type applicationRow struct {
+		RoadmapID       int64
+		UserID          int64
+		Grade           int16
+		UserRegion      string
+		CareerDirection string
+		OpportunityID   int64
+		OpportunityName string
+		SubmittedAt     time.Time
+	}
+	var rows []applicationRow
+	err := s.db.WithContext(ctx).
+		Table("roadmap_employer_applications AS application").
+		Select(`application.roadmap_id, user_goals.user_profile_id AS user_id, user_profiles.grade,
+			regions.name AS user_region, career_directions.name AS career_direction,
+			company_opportunities.id AS opportunity_id, company_opportunities.name AS opportunity_name,
+			application.submitted_at`).
+		Joins("JOIN roadmaps ON roadmaps.id = application.roadmap_id").
+		Joins("JOIN user_goals ON user_goals.id = roadmaps.user_goal_id").
+		Joins("JOIN user_profiles ON user_profiles.id = user_goals.user_profile_id").
+		Joins("JOIN regions ON regions.id = user_profiles.region_id").
+		Joins("JOIN career_directions ON career_directions.id = user_goals.career_direction_id").
+		Joins("JOIN company_opportunities ON company_opportunities.id = application.company_opportunity_id").
+		Where("career_directions.company_id = ?", companyID).
+		Order("application.submitted_at DESC").Scan(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("list employer applications: %w", err)
+	}
+	result := make([]EmployerApplicationListItem, 0, len(rows))
+	for _, row := range rows {
+		item := EmployerApplicationListItem{
+			RoadmapID: row.RoadmapID, UserID: row.UserID, Grade: row.Grade, UserRegion: row.UserRegion,
+			CareerDirection: row.CareerDirection, OpportunityID: row.OpportunityID,
+			OpportunityName: row.OpportunityName, SubmittedAt: row.SubmittedAt, Status: "submitted",
+			FeedbackHistory: []EmployerFeedbackView{},
+		}
+		var feedbacks []models.EmployerFeedback
+		if err := s.db.WithContext(ctx).Where("roadmap_id = ?", row.RoadmapID).Order("created_at ASC, id ASC").Find(&feedbacks).Error; err != nil {
+			return nil, fmt.Errorf("list application feedback: %w", err)
+		}
+		for _, feedback := range feedbacks {
+			view := EmployerFeedbackView{ID: feedback.ID, Status: feedback.Status, Message: feedback.Message, Contact: feedback.Contact, CreatedAt: feedback.CreatedAt}
+			item.FeedbackHistory = append(item.FeedbackHistory, view)
+			item.Status, item.Message, item.Contact = feedback.Status, feedback.Message, feedback.Contact
+		}
+		result = append(result, item)
+	}
+	return result, nil
+}
+
+func (s *Store) SaveEmployerFeedback(ctx context.Context, roadmapID int64, input EmployerFeedbackInput) (EmployerFeedbackView, error) {
+	var application models.RoadmapEmployerApplication
+	if err := s.db.WithContext(ctx).First(&application, "roadmap_id = ?", roadmapID).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+		return EmployerFeedbackView{}, fmt.Errorf("%w: application %d", ErrNotFound, roadmapID)
+	} else if err != nil {
+		return EmployerFeedbackView{}, err
+	}
+	feedback := models.EmployerFeedback{RoadmapID: roadmapID, Status: input.Status, Message: strings.TrimSpace(input.Message), Contact: strings.TrimSpace(input.Contact), CreatedAt: time.Now().UTC()}
+	if err := s.db.WithContext(ctx).Create(&feedback).Error; err != nil {
+		return EmployerFeedbackView{}, fmt.Errorf("save employer feedback: %w", err)
+	}
+	return EmployerFeedbackView{ID: feedback.ID, Status: feedback.Status, Message: feedback.Message, Contact: feedback.Contact, CreatedAt: feedback.CreatedAt}, nil
 }

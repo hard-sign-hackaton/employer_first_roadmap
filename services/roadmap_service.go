@@ -41,4 +41,8 @@ type RoadmapService interface {
 
 	// SubmitEmployerApplication сохраняет подачу заявки только после завершённого практического шага.
 	SubmitEmployerApplication(ctx context.Context, userID int64, request dto.GetRoadmapRequest) (dto.EmployerApplicationResponse, error)
+
+	// GetEmployerFeedback возвращает последний ответ работодателя и историю
+	// статусов по последней заявке пользователя.
+	GetEmployerFeedback(ctx context.Context, userID int64) (dto.EmployerApplicationResponse, error)
 }

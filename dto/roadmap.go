@@ -76,6 +76,20 @@ type CompanyOpportunityResponse struct {
 
 // EmployerApplicationResponse подтверждает отправку заявки работодателю.
 type EmployerApplicationResponse struct {
-	CompanyOpportunityID int64  `json:"company_opportunity_id"`
-	Status               string `json:"status"`
+	RoadmapID            int64                      `json:"roadmap_id"`
+	CompanyOpportunityID int64                      `json:"company_opportunity_id"`
+	CompanyName          string                     `json:"company_name,omitempty"`
+	OpportunityName      string                     `json:"opportunity_name,omitempty"`
+	Status               string                     `json:"status"`
+	Message              string                     `json:"message,omitempty"`
+	Contact              string                     `json:"contact,omitempty"`
+	UpdatedAt            *time.Time                 `json:"updated_at,omitempty"`
+	History              []EmployerFeedbackResponse `json:"history,omitempty"`
+}
+
+type EmployerFeedbackResponse struct {
+	Status    string    `json:"status"`
+	Message   string    `json:"message,omitempty"`
+	Contact   string    `json:"contact,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }

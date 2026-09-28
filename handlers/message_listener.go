@@ -18,6 +18,9 @@ func GlobalMessageListener(ctx maxbot.Context) error {
 	if strings.TrimSpace(ctx.Update().Message.Body.Text) == "/roadmap" {
 		return OpenCurrentRoadmap(ctx)
 	}
+	if strings.TrimSpace(ctx.Update().Message.Body.Text) == "/feedback" {
+		return ShowEmployerFeedback(ctx)
+	}
 
 	userState := utils.GetUserState(userID)
 	if strings.HasPrefix(string(userState), "small_survey_") {

@@ -188,6 +188,9 @@ func showBigRegions(ctx maxbot.Context) error {
 	if err != nil {
 		return ctx.Send("Не удалось получить регионы.")
 	}
+	if len(regions) == 0 {
+		return ctx.Send("Список регионов пока не настроен. Обратитесь к администратору бота.")
+	}
 	s.RegionIDs = nil
 	keyboard := model.NewKeyboard()
 	for index, region := range regions {

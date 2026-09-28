@@ -1,8 +1,14 @@
 package employerapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,9 +42,21 @@ func TestEmployerCatalogFeedsUserRoadmap(t *testing.T) {
 
 	request := validCatalogRequest()
 	request.Company.Name = "Integration Employer API"
-	catalog, err := NewStore(tx).SaveCatalog(ctx, 0, request)
+	requestBody, err := json.Marshal(request)
 	if err != nil {
-		t.Fatalf("save employer catalog: %v", err)
+		t.Fatalf("marshal employer catalog: %v", err)
+	}
+	handler := NewHandler(NewStore(tx), "integration-secret")
+	httpRequest := httptest.NewRequest(http.MethodPost, "/api/v1/employer/catalog", bytes.NewReader(requestBody)).WithContext(ctx)
+	httpRequest.Header.Set("Authorization", "Bearer integration-secret")
+	httpResponse := httptest.NewRecorder()
+	handler.ServeHTTP(httpResponse, httpRequest)
+	if httpResponse.Code != http.StatusCreated {
+		t.Fatalf("create employer catalog HTTP status = %d, body = %s", httpResponse.Code, httpResponse.Body.String())
+	}
+	var catalog CatalogResponse
+	if err := json.NewDecoder(httpResponse.Body).Decode(&catalog); err != nil {
+		t.Fatalf("decode employer catalog response: %v", err)
 	}
 	if len(catalog.Directions) != 1 || len(catalog.Directions[0].EducationPrograms) != 1 || len(catalog.Directions[0].Opportunities) != 1 {
 		t.Fatalf("incomplete saved catalog: %#v", catalog)
@@ -81,5 +99,35 @@ func TestEmployerCatalogFeedsUserRoadmap(t *testing.T) {
 	}
 	if len(roadmap.Steps) != len(canonicalRoadmapSteps) {
 		t.Fatalf("roadmap steps = %d, want %d", len(roadmap.Steps), len(canonicalRoadmapSteps))
+	}
+
+	application := models.RoadmapEmployerApplication{
+		RoadmapID: roadmap.ID, CompanyOpportunityID: catalog.Directions[0].Opportunities[0].ID,
+		Status: "submitted", SubmittedAt: time.Now().UTC(),
+	}
+	if err := tx.Create(&application).Error; err != nil {
+		t.Fatalf("create submitted application: %v", err)
+	}
+	listRequest := httptest.NewRequest(http.MethodGet, "/api/v1/employer/companies/"+fmt.Sprint(catalog.Company.ID)+"/applications", nil).WithContext(ctx)
+	listRequest.Header.Set("Authorization", "Bearer integration-secret")
+	listResponse := httptest.NewRecorder()
+	handler.ServeHTTP(listResponse, listRequest)
+	if listResponse.Code != http.StatusOK || !strings.Contains(listResponse.Body.String(), "submitted") {
+		t.Fatalf("list applications status = %d, body = %s", listResponse.Code, listResponse.Body.String())
+	}
+	feedbackBody := []byte(`{"status":"interview","message":"Приглашаем на интервью","contact":"hr@example.com"}`)
+	feedbackRequest := httptest.NewRequest(http.MethodPatch, "/api/v1/employer/applications/"+fmt.Sprint(roadmap.ID), bytes.NewReader(feedbackBody)).WithContext(ctx)
+	feedbackRequest.Header.Set("Authorization", "Bearer integration-secret")
+	feedbackResponse := httptest.NewRecorder()
+	handler.ServeHTTP(feedbackResponse, feedbackRequest)
+	if feedbackResponse.Code != http.StatusOK {
+		t.Fatalf("save feedback status = %d, body = %s", feedbackResponse.Code, feedbackResponse.Body.String())
+	}
+	userFeedback, err := roadmapService.GetEmployerFeedback(ctx, userID)
+	if err != nil {
+		t.Fatalf("get feedback in bot service: %v", err)
+	}
+	if userFeedback.Status != "interview" || userFeedback.Message != "Приглашаем на интервью" || userFeedback.Contact != "hr@example.com" {
+		t.Fatalf("unexpected bot feedback: %#v", userFeedback)
 	}
 }

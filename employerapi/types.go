@@ -190,3 +190,32 @@ type NamedReference struct {
 type opportunityStatusRequest struct {
 	IsActive bool `json:"is_active"`
 }
+
+type EmployerApplicationListItem struct {
+	RoadmapID       int64                  `json:"application_id"`
+	UserID          int64                  `json:"user_id"`
+	Grade           int16                  `json:"grade"`
+	UserRegion      string                 `json:"user_region"`
+	CareerDirection string                 `json:"career_direction"`
+	OpportunityID   int64                  `json:"opportunity_id"`
+	OpportunityName string                 `json:"opportunity_name"`
+	SubmittedAt     time.Time              `json:"submitted_at"`
+	Status          string                 `json:"status"`
+	Message         string                 `json:"message,omitempty"`
+	Contact         string                 `json:"contact,omitempty"`
+	FeedbackHistory []EmployerFeedbackView `json:"feedback_history"`
+}
+
+type EmployerFeedbackView struct {
+	ID        int64     `json:"id"`
+	Status    string    `json:"status"`
+	Message   string    `json:"message,omitempty"`
+	Contact   string    `json:"contact,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type EmployerFeedbackInput struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+	Contact string `json:"contact,omitempty"`
+}

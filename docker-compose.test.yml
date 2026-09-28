@@ -25,7 +25,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: go test ./integration -v
+    # Пакеты используют одну интеграционную БД, поэтому запускаем их
+    # последовательно, чтобы независимые seed-транзакции не конфликтовали.
+    command: go test -p 1 ./... -v
 
 volumes:
   postgres_test_data:

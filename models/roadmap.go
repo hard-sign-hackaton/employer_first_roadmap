@@ -106,4 +106,16 @@ type RoadmapEmployerApplication struct {
 	SubmittedAt          time.Time `json:"submitted_at"`
 
 	CompanyOpportunity CompanyOpportunity `json:"company_opportunity" gorm:"foreignKey:CompanyOpportunityID"`
+	Feedbacks          []EmployerFeedback `json:"feedbacks" gorm:"foreignKey:RoadmapID;references:RoadmapID"`
+}
+
+// EmployerFeedback — ответ работодателя на заявку пользователя. История не
+// перезаписывается: каждое изменение статуса сохраняется отдельной записью.
+type EmployerFeedback struct {
+	ID        int64     `json:"id" gorm:"primaryKey;autoIncrement"`
+	RoadmapID int64     `json:"roadmap_id" gorm:"not null;index"`
+	Status    string    `json:"status" gorm:"size:24;not null;check:status IN ('under_review','interview','accepted','rejected')"`
+	Message   string    `json:"message"`
+	Contact   string    `json:"contact" gorm:"size:500"`
+	CreatedAt time.Time `json:"created_at"`
 }

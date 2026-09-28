@@ -15,6 +15,25 @@ func DemoSeedEnabled() bool {
 	return strings.EqualFold(os.Getenv("APP_ENV"), "demo") || strings.EqualFold(os.Getenv("SEED_DEMO_DATA"), "true")
 }
 
+// SeedReferenceData заполняет только обязательные справочники интерфейса.
+// Это не демонстрационные работодатели: регионы, предметы ЕГЭ и таксономия
+// интересов нужны боту даже в production, пока каталог компаний пуст.
+func SeedReferenceData(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if _, err := seedRegions(tx); err != nil {
+			return err
+		}
+		if _, err := seedTags(tx); err != nil {
+			return err
+		}
+		subjects, err := seedSubjects(tx)
+		if err != nil {
+			return err
+		}
+		return normalizeAdmissionMathSubject(tx, subjects)
+	})
+}
+
 // SeedDemoData заполняет связный демонстрационный каталог для проверки сценариев MVP.
 // Названия организаций и ОП взяты как ориентир из открытых источников. Связи,
 // проходные баллы, возможности и требования намеренно тестовые и не заменяют

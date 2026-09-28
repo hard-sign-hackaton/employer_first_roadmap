@@ -30,7 +30,50 @@ func NewHandler(store *Store, apiKey string, allowedOrigin ...string) http.Handl
 	mux.Handle("GET /api/v1/employer/catalog/{companyID}", handler.authorize(http.HandlerFunc(handler.getCatalog)))
 	mux.Handle("PUT /api/v1/employer/catalog/{companyID}", handler.authorize(http.HandlerFunc(handler.updateCatalog)))
 	mux.Handle("PATCH /api/v1/employer/opportunities/{opportunityID}/status", handler.authorize(http.HandlerFunc(handler.setOpportunityStatus)))
+	mux.Handle("GET /api/v1/employer/companies/{companyID}/applications", handler.authorize(http.HandlerFunc(handler.listApplications)))
+	mux.Handle("PATCH /api/v1/employer/applications/{applicationID}", handler.authorize(http.HandlerFunc(handler.saveFeedback)))
 	return recoverPanic(handler.withCORS(mux))
+}
+
+func (h *Handler) listApplications(writer http.ResponseWriter, request *http.Request) {
+	companyID, err := positivePathID(request, "companyID")
+	if err != nil {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	applications, err := h.store.ListEmployerApplications(request.Context(), companyID)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"applications": applications})
+}
+
+func (h *Handler) saveFeedback(writer http.ResponseWriter, request *http.Request) {
+	applicationID, err := positivePathID(request, "applicationID")
+	if err != nil {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	var input EmployerFeedbackInput
+	if err := decodeJSON(writer, request, &input); err != nil {
+		writeJSON(writer, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if !contains([]string{"under_review", "interview", "accepted", "rejected"}, input.Status) {
+		writeJSON(writer, http.StatusUnprocessableEntity, map[string]string{"error": "status must be under_review, interview, accepted or rejected"})
+		return
+	}
+	if strings.TrimSpace(input.Message) == "" {
+		writeJSON(writer, http.StatusUnprocessableEntity, map[string]string{"error": "message is required"})
+		return
+	}
+	feedback, err := h.store.SaveEmployerFeedback(request.Context(), applicationID, input)
+	if err != nil {
+		writeError(writer, err)
+		return
+	}
+	writeJSON(writer, http.StatusOK, feedback)
 }
 
 func (h *Handler) health(writer http.ResponseWriter, _ *http.Request) {

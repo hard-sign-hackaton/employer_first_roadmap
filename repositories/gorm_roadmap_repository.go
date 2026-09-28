@@ -223,6 +223,19 @@ func (r *GormRoadmapRepository) SaveEmployerApplication(ctx context.Context, app
 	return application, err
 }
 
+func (r *GormRoadmapRepository) FindLatestEmployerApplicationByUserID(ctx context.Context, userID int64) (models.RoadmapEmployerApplication, error) {
+	var application models.RoadmapEmployerApplication
+	err := r.db.WithContext(ctx).
+		Joins("JOIN roadmaps ON roadmaps.id = roadmap_employer_applications.roadmap_id").
+		Joins("JOIN user_goals ON user_goals.id = roadmaps.user_goal_id").
+		Where("user_goals.user_profile_id = ?", userID).
+		Preload("CompanyOpportunity.Company").
+		Preload("Feedbacks", func(db *gorm.DB) *gorm.DB { return db.Order("created_at ASC, id ASC") }).
+		Order("roadmap_employer_applications.submitted_at DESC").
+		First(&application).Error
+	return application, err
+}
+
 func (r *GormRoadmapRepository) ArchiveRoadmap(ctx context.Context, roadmapID int64) (models.Roadmap, error) {
 	archivedAt := time.Now().UTC()
 	if err := r.db.WithContext(ctx).
@@ -251,6 +264,9 @@ func (r *GormRoadmapRepository) ResetUserData(ctx context.Context, userID int64)
 			return err
 		}
 		if len(roadmapIDs) > 0 {
+			if err := tx.Where("roadmap_id IN ?", roadmapIDs).Delete(&models.EmployerFeedback{}).Error; err != nil {
+				return err
+			}
 			if err := tx.Where("roadmap_id IN ?", roadmapIDs).Delete(&models.RoadmapEmployerApplication{}).Error; err != nil {
 				return err
 			}
@@ -297,5 +313,6 @@ func (r *GormRoadmapRepository) roadmapDetails(query *gorm.DB) *gorm.DB {
 		Preload("Steps.CompanyOpportunity.Company").
 		Preload("AdmissionApplications.EducationProgram.University").
 		Preload("EnrollmentChoice.AdmissionApplication.EducationProgram.University").
-		Preload("EmployerApplication.CompanyOpportunity")
+		Preload("EmployerApplication.CompanyOpportunity.Company").
+		Preload("EmployerApplication.Feedbacks", func(db *gorm.DB) *gorm.DB { return db.Order("created_at ASC, id ASC") })
 }

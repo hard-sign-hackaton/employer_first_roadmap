@@ -890,7 +890,7 @@ func showRoadmapCompletion(ctx maxbot.Context) error {
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapCompleted)
 	kb := model.NewKeyboard()
 	kb.AddRow().AddMessage("Начать новый roadmap")
-	return ctx.Send("Поздравляем! Вы завершили roadmap и подтвердили подачу заявки в компанию. Удачи на следующем карьерном этапе!", maxbot.WithKeyboard(kb))
+	return ctx.Send("Поздравляем! Вы завершили roadmap и подали заявку в компанию. Проверяйте ответ работодателя командой /feedback.", maxbot.WithKeyboard(kb))
 }
 
 func handleRoadmapPostAdmission(ctx maxbot.Context, text string) error {

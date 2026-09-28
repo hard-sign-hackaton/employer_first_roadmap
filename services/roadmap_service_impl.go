@@ -226,7 +226,15 @@ func (s *roadmapService) SubmitEmployerApplication(ctx context.Context, userID i
 	if err != nil {
 		return dto.EmployerApplicationResponse{}, fmt.Errorf("save employer application: %w", err)
 	}
-	return dto.EmployerApplicationResponse{CompanyOpportunityID: saved.CompanyOpportunityID, Status: saved.Status}, nil
+	return dto.EmployerApplicationResponse{RoadmapID: saved.RoadmapID, CompanyOpportunityID: saved.CompanyOpportunityID, Status: saved.Status}, nil
+}
+
+func (s *roadmapService) GetEmployerFeedback(ctx context.Context, userID int64) (dto.EmployerApplicationResponse, error) {
+	application, err := s.roadmaps.FindLatestEmployerApplicationByUserID(ctx, userID)
+	if err != nil {
+		return dto.EmployerApplicationResponse{}, fmt.Errorf("find employer application: %w", err)
+	}
+	return employerApplicationResponse(application), nil
 }
 
 func roadmapSteps(template models.RoadmapTemplate) []models.RoadmapStep {
@@ -267,7 +275,7 @@ func roadmapResponse(roadmap models.Roadmap) dto.RoadmapResponse {
 		enrollmentChoice = &response
 	}
 	if roadmap.EmployerApplication != nil {
-		response := dto.EmployerApplicationResponse{CompanyOpportunityID: roadmap.EmployerApplication.CompanyOpportunityID, Status: roadmap.EmployerApplication.Status}
+		response := employerApplicationResponse(*roadmap.EmployerApplication)
 		employerApplication = &response
 	}
 	return dto.RoadmapResponse{
@@ -284,6 +292,26 @@ func roadmapResponse(roadmap models.Roadmap) dto.RoadmapResponse {
 		EnrollmentChoice:    enrollmentChoice,
 		EmployerApplication: employerApplication,
 	}
+}
+
+func employerApplicationResponse(application models.RoadmapEmployerApplication) dto.EmployerApplicationResponse {
+	response := dto.EmployerApplicationResponse{
+		RoadmapID:            application.RoadmapID,
+		CompanyOpportunityID: application.CompanyOpportunityID,
+		CompanyName:          application.CompanyOpportunity.Company.Name,
+		OpportunityName:      application.CompanyOpportunity.Name,
+		Status:               application.Status,
+		History:              make([]dto.EmployerFeedbackResponse, 0, len(application.Feedbacks)),
+	}
+	for _, feedback := range application.Feedbacks {
+		response.History = append(response.History, dto.EmployerFeedbackResponse{Status: feedback.Status, Message: feedback.Message, Contact: feedback.Contact, CreatedAt: feedback.CreatedAt})
+		response.Status = feedback.Status
+		response.Message = feedback.Message
+		response.Contact = feedback.Contact
+		updatedAt := feedback.CreatedAt
+		response.UpdatedAt = &updatedAt
+	}
+	return response
 }
 
 func roadmapStepResponse(step models.RoadmapStep) dto.RoadmapStepResponse {

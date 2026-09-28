@@ -25,6 +25,9 @@ func showExamSubjectSelection(ctx maxbot.Context, nextState models.UserState) er
 	if err != nil {
 		return ctx.Send("Не удалось получить список предметов ЕГЭ.")
 	}
+	if len(subjects) == 0 {
+		return ctx.Send("Список предметов ЕГЭ пока не настроен. Обратитесь к администратору бота.")
+	}
 	s.AvailableExamIDs = nil
 	s.AvailableExamNames = nil
 	s.SelectedExamIDs = nil

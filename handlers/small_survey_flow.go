@@ -41,6 +41,9 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 		if err != nil {
 			return ctx.Send("Не удалось получить регионы.")
 		}
+		if len(regions) == 0 {
+			return ctx.Send("Список регионов пока не настроен. Обратитесь к администратору бота.")
+		}
 		kb := model.NewKeyboard()
 		s.RegionIDs = nil
 		for i, r := range regions {
@@ -189,6 +192,9 @@ func resendSmallRegions(ctx maxbot.Context, message string) error {
 	regions, err := app.Reference.ListRegions(context.Background())
 	if err != nil {
 		return ctx.Send("Не удалось получить регионы.")
+	}
+	if len(regions) == 0 {
+		return ctx.Send("Список регионов пока не настроен. Обратитесь к администратору бота.")
 	}
 	s.RegionIDs = nil
 	kb = model.NewKeyboard()

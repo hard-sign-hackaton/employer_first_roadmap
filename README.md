@@ -20,6 +20,10 @@ API запускается вместе с ботом на `EMPLOYER_API_PORT` �
 - `PUT /api/v1/employer/catalog/{companyID}` — атомарно обновить каталог;
 - `PATCH /api/v1/employer/opportunities/{opportunityID}/status` — быстро
   включить или выключить стажировку, практику, проект либо целевое обучение;
+- `GET /api/v1/employer/companies/{companyID}/applications` — получить заявки
+  пользователей и всю историю ответов;
+- `PATCH /api/v1/employer/applications/{applicationID}` — отправить пользователю
+  статус, сообщение и контакт работодателя;
 - `GET /api/v1/employer/reference-data` — справочники и допустимые enum;
 - `GET /healthz` — проверка процесса без авторизации.
 
@@ -34,6 +38,24 @@ API запускается вместе с ботом на `EMPLOYER_API_PORT` �
 Для нового направления без блока `roadmap` API создаёт обязательные девять
 шагов бота автоматически. В пользовательском окружении не включайте
 `APP_ENV=demo` и не задавайте `SEED_DEMO_DATA=true`.
+
+Ответ на заявку отправляется так:
+
+```http
+PATCH /api/v1/employer/applications/123
+Authorization: Bearer <EMPLOYER_API_KEY>
+Content-Type: application/json
+
+{
+  "status": "interview",
+  "message": "Приглашаем на интервью во вторник в 15:00",
+  "contact": "hr@example.com"
+}
+```
+
+Допустимые статусы: `under_review`, `interview`, `accepted`, `rejected`.
+Каждое изменение добавляется в историю, а не перезаписывает предыдущее.
+Пользователь проверяет актуальный ответ и историю в боте командой `/feedback`.
 
 ### Запуск через Docker Compose
 ```bash

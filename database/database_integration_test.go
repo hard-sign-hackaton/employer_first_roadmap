@@ -50,6 +50,55 @@ func TestAutoMigratePostgres(t *testing.T) {
 	}
 }
 
+func TestSeedReferenceDataPostgres(t *testing.T) {
+	if os.Getenv("RUN_POSTGRES_INTEGRATION") != "1" {
+		t.Skip("PostgreSQL integration test is disabled")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	db, err := Open(ctx)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := AutoMigrate(db); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatalf("begin transaction: %v", tx.Error)
+	}
+	t.Cleanup(func() { _ = tx.Rollback().Error })
+
+	var companiesBefore int64
+	if err := tx.Model(&models.Company{}).Count(&companiesBefore).Error; err != nil {
+		t.Fatalf("count companies before reference seed: %v", err)
+	}
+	if err := SeedReferenceData(tx); err != nil {
+		t.Fatalf("seed reference data: %v", err)
+	}
+	for model, minimum := range map[any]int64{
+		&models.Region{}:      6,
+		&models.ExamSubject{}: 12,
+		&models.InterestTag{}: 17,
+	} {
+		var count int64
+		if err := tx.Model(model).Count(&count).Error; err != nil {
+			t.Fatalf("count %T: %v", model, err)
+		}
+		if count < minimum {
+			t.Errorf("%T count = %d, want at least %d", model, count, minimum)
+		}
+	}
+	var companiesAfter int64
+	if err := tx.Model(&models.Company{}).Count(&companiesAfter).Error; err != nil {
+		t.Fatalf("count companies after reference seed: %v", err)
+	}
+	if companiesAfter != companiesBefore {
+		t.Fatalf("reference seed changed companies count from %d to %d", companiesBefore, companiesAfter)
+	}
+}
+
 func TestSeedDemoDataPostgres(t *testing.T) {
 	if os.Getenv("RUN_POSTGRES_INTEGRATION") != "1" {
 		t.Skip("PostgreSQL integration test is disabled")
@@ -73,7 +122,7 @@ func TestSeedDemoDataPostgres(t *testing.T) {
 
 	for model, expected := range map[any]int64{
 		&models.Region{}:           6,
-		&models.ExamSubject{}:      11,
+		&models.ExamSubject{}:      12,
 		&models.InterestTag{}:      17,
 		&models.Company{}:          7,
 		&models.CareerDirection{}:  23,

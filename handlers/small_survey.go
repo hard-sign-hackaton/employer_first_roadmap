@@ -24,6 +24,10 @@ func showSmallCompanies(ctx maxbot.Context) error {
 	if err != nil {
 		return ctx.Send("Не удалось получить компании. Попробуйте позже.")
 	}
+	if len(companies) == 0 {
+		utils.UpdateUserStateStorage(userID, UserStateStart)
+		return ctx.Send("Каталог работодателей пока пуст. Работодатель должен сначала заполнить данные через API. Отправьте /start и выберите «Нет», чтобы пройти полный опрос.")
+	}
 	s := utils.GetSmallSurvey(userID)
 	s.CompanyIDs = nil
 	kb := model.NewKeyboard()

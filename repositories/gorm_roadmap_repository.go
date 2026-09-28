@@ -236,6 +236,19 @@ func (r *GormRoadmapRepository) FindLatestEmployerApplicationByUserID(ctx contex
 	return application, err
 }
 
+func (r *GormRoadmapRepository) ListEmployerApplicationsByUserID(ctx context.Context, userID int64) ([]models.RoadmapEmployerApplication, error) {
+	var applications []models.RoadmapEmployerApplication
+	err := r.db.WithContext(ctx).
+		Joins("JOIN roadmaps ON roadmaps.id = roadmap_employer_applications.roadmap_id").
+		Joins("JOIN user_goals ON user_goals.id = roadmaps.user_goal_id").
+		Where("user_goals.user_profile_id = ?", userID).
+		Preload("CompanyOpportunity.Company").
+		Preload("Feedbacks", func(db *gorm.DB) *gorm.DB { return db.Order("created_at ASC, id ASC") }).
+		Order("roadmap_employer_applications.submitted_at DESC").
+		Find(&applications).Error
+	return applications, err
+}
+
 func (r *GormRoadmapRepository) ArchiveRoadmap(ctx context.Context, roadmapID int64) (models.Roadmap, error) {
 	archivedAt := time.Now().UTC()
 	if err := r.db.WithContext(ctx).

@@ -50,9 +50,18 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 			s.RegionIDs = append(s.RegionIDs, r.ID)
 			kb.AddRow().AddMessage(fmt.Sprintf("%d. %s", i+1, r.Name))
 		}
+		kb.AddRow().AddMessage("Другое")
 		utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingRegion)
 		return ctx.Send("3. Выберите регион:", maxbot.WithKeyboard(kb))
 	case models.UserStateSmallSurveyWaitingRegion:
+		if text == "Другое" {
+			kb := model.NewKeyboard()
+			kb.AddRow().AddMessage("Вернуться к выбору региона")
+			return ctx.Send("Сейчас в каталоге нет информации по другим регионам. Вернитесь позже или выберите регион из доступного списка.", maxbot.WithKeyboard(kb))
+		}
+		if text == "Вернуться к выбору региона" {
+			return resendSmallRegions(ctx, "Выберите регион из доступных:")
+		}
 		n, ok := choice(text, len(s.RegionIDs))
 		if !ok {
 			return resendSmallRegions(ctx, "Выберите регион из доступных:")
@@ -128,6 +137,13 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 		if err := saveChangedRelocation(ctx, true); err != nil {
 			return ctx.Send("Не удалось сохранить решение о переезде.")
 		}
+		// В эту развилку пользователь может попасть ещё до выбора направления:
+		// например, когда у компании нет ни одного локального направления.
+		// В таком случае нельзя оценивать путь с пустым CareerDirectionID — сначала
+		// повторно показываем доступные после расширения географии направления.
+		if s.CareerDirectionID == 0 {
+			return showDirections(ctx)
+		}
 		return continueSmallTrajectoryAfterDirection(ctx)
 	case models.UserStateSmallSurveyWaitingExamSet:
 		n, ok := choice(text, len(s.ExamSets))
@@ -202,6 +218,7 @@ func resendSmallRegions(ctx maxbot.Context, message string) error {
 		s.RegionIDs = append(s.RegionIDs, region.ID)
 		kb.AddRow().AddMessage(fmt.Sprintf("%d. %s", i+1, region.Name))
 	}
+	kb.AddRow().AddMessage("Другое")
 	return ctx.Send("3. Выберите регион:", maxbot.WithKeyboard(kb))
 }
 

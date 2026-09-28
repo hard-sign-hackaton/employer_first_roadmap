@@ -46,6 +46,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.ExamCombinationItem{},
 		&models.AdmissionScoreHistory{},
 		&models.AdmissionCampaignRule{},
+		&models.APIAccount{},
 		&models.UserProfile{},
 		&models.UserInterest{},
 		&models.UserSubject{},

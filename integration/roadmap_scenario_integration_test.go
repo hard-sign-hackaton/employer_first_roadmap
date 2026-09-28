@@ -258,6 +258,33 @@ func testTrajectoryPreflightAvoidsCatalogDeadEnds(t *testing.T) {
 		t.Fatalf("relocation-enabled preflight = %#v, err=%v", relocationAllowed, err)
 	}
 
+	// Регрессия: если у работодателя изначально нет локальных направлений,
+	// согласие на переезд должно сначала открыть направления, а затем наборы ЕГЭ.
+	// Раньше обработчик пытался оценить траекторию без выбранного направления.
+	rosatomUserID := scenarioUserID + 44
+	if _, err := profileService.SaveProfile(ctx, rosatomUserID, dto.UpsertProfileRequest{Grade: 9, RegionID: permID, WillingToRelocate: false}); err != nil {
+		t.Fatalf("save Rosatom local profile: %v", err)
+	}
+	rosatom := companyByName(t, trajectoryService, ctx, "Госкорпорация «Росатом»")
+	rosatomDirections, err := trajectoryService.GetCareerDirections(ctx, rosatomUserID, dto.GetCareerDirectionsRequest{CompanyID: rosatom.ID})
+	if err != nil {
+		t.Fatalf("get local Rosatom directions: %v", err)
+	}
+	if len(rosatomDirections) != 0 {
+		t.Fatalf("local Rosatom directions = %#v, want none", rosatomDirections)
+	}
+	if _, err := profileService.SaveProfile(ctx, rosatomUserID, dto.UpsertProfileRequest{Grade: 9, RegionID: permID, WillingToRelocate: true}); err != nil {
+		t.Fatalf("allow Rosatom relocation: %v", err)
+	}
+	rosatomDirections, err = trajectoryService.GetCareerDirections(ctx, rosatomUserID, dto.GetCareerDirectionsRequest{CompanyID: rosatom.ID})
+	if err != nil || len(rosatomDirections) == 0 {
+		t.Fatalf("Rosatom directions after relocation = %#v, err=%v", rosatomDirections, err)
+	}
+	rosatomPath, err := trajectoryService.AssessTrajectoryPath(ctx, rosatomUserID, dto.AssessTrajectoryPathRequest{CareerDirectionID: rosatomDirections[0].ID})
+	if err != nil || rosatomPath.Status != dto.TrajectoryPathStatusAvailable || len(rosatomPath.ExamSets) == 0 {
+		t.Fatalf("Rosatom path after relocation = %#v, err=%v", rosatomPath, err)
+	}
+
 	eleventhUserID := scenarioUserID + 43
 	if _, err := profileService.SaveProfile(ctx, eleventhUserID, dto.UpsertProfileRequest{Grade: 11, RegionID: permID, WillingToRelocate: false}); err != nil {
 		t.Fatalf("save eleventh-grade profile: %v", err)
@@ -487,6 +514,10 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 	if opportunity.CompanyName == "" {
 		t.Fatal("employer opportunity must include the company name")
 	}
+	earlyApplication, err := roadmapService.SubmitEmployerApplication(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
+	if err != nil || earlyApplication.CompanyOpportunityID != opportunity.ID || earlyApplication.Status != "submitted" {
+		t.Fatalf("early employer application during experience: %v; application=%#v", err, earlyApplication)
+	}
 	for index := 0; index < 2; index++ {
 		current, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
 		if err != nil || current.NextAction == nil {
@@ -499,6 +530,13 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 	application, err := roadmapService.SubmitEmployerApplication(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
 	if err != nil || application.CompanyOpportunityID != opportunity.ID || application.Status != "submitted" {
 		t.Fatalf("submit employer application: %v; application=%#v", err, application)
+	}
+	if err := tx.Create(&models.EmployerFeedback{RoadmapID: roadmap.ID, Status: "interview", Message: "Приглашаем на интервью", Contact: "hr@example.test"}).Error; err != nil {
+		t.Fatalf("create employer feedback: %v", err)
+	}
+	employerApplications, err := roadmapService.ListEmployerApplications(ctx, userID)
+	if err != nil || len(employerApplications) != 1 || employerApplications[0].Status != "interview" || employerApplications[0].Contact != "hr@example.test" {
+		t.Fatalf("list employer applications: %v; applications=%#v", err, employerApplications)
 	}
 	finalRoadmap, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
 	if err != nil || finalRoadmap.EmployerApplication == nil || finalRoadmap.EmployerApplication.Status != "submitted" {

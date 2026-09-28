@@ -25,10 +25,14 @@ func (r *GormEducationRepository) ListLatestExamCombinationsForDirection(ctx con
 	latestYear := r.db.Model(&models.ExamCombination{}).
 		Select("MAX(exam_combinations.admission_year)").
 		Joins("JOIN career_direction_education_programs AS cdep ON cdep.education_program_id = exam_combinations.education_program_id").
-		Where("cdep.career_direction_id = ?", careerDirectionID)
+		Joins("JOIN education_programs ON education_programs.id = exam_combinations.education_program_id").
+		Joins("JOIN universities ON universities.id = education_programs.university_id").
+		Where("cdep.career_direction_id = ? AND education_programs.is_active = true AND universities.is_active = true", careerDirectionID)
 	err := r.db.WithContext(ctx).
 		Joins("JOIN career_direction_education_programs AS cdep ON cdep.education_program_id = exam_combinations.education_program_id").
-		Where("cdep.career_direction_id = ? AND exam_combinations.admission_year = (?)", careerDirectionID, latestYear).
+		Joins("JOIN education_programs ON education_programs.id = exam_combinations.education_program_id").
+		Joins("JOIN universities ON universities.id = education_programs.university_id").
+		Where("cdep.career_direction_id = ? AND education_programs.is_active = true AND universities.is_active = true AND exam_combinations.admission_year = (?)", careerDirectionID, latestYear).
 		Preload("EducationProgram.University.Region").
 		Preload("Items.ExamSubject").
 		Order("exam_combinations.id ASC").
@@ -42,7 +46,7 @@ func (r *GormEducationRepository) ListEducationOptions(ctx context.Context, filt
 		Joins("JOIN career_direction_education_programs AS cdep ON cdep.education_program_id = education_programs.id").
 		Joins("JOIN exam_combinations AS ec ON ec.education_program_id = education_programs.id").
 		Joins("JOIN universities ON universities.id = education_programs.university_id").
-		Where("cdep.career_direction_id = ?", filter.CareerDirectionID).
+		Where("cdep.career_direction_id = ? AND education_programs.is_active = true AND universities.is_active = true", filter.CareerDirectionID).
 		Where(`ec.admission_year = (
 			SELECT MAX(ec_latest.admission_year)
 			FROM exam_combinations AS ec_latest
@@ -91,7 +95,9 @@ func (r *GormEducationRepository) ListDirectionIDsAvailableForSubjects(ctx conte
 		Select("DISTINCT cd.id").
 		Joins("JOIN career_direction_education_programs AS cdep ON cdep.career_direction_id = cd.id").
 		Joins("JOIN exam_combinations AS ec ON ec.education_program_id = cdep.education_program_id").
-		Where("cd.company_id = ? AND ec.admission_year = (SELECT MAX(ec_latest.admission_year) FROM exam_combinations AS ec_latest WHERE ec_latest.education_program_id = ec.education_program_id)", companyID).
+		Joins("JOIN education_programs AS ep ON ep.id = cdep.education_program_id").
+		Joins("JOIN universities AS u ON u.id = ep.university_id").
+		Where("cd.company_id = ? AND cd.is_active = true AND ep.is_active = true AND u.is_active = true AND ec.admission_year = (SELECT MAX(ec_latest.admission_year) FROM exam_combinations AS ec_latest WHERE ec_latest.education_program_id = ec.education_program_id)", companyID).
 		Where(
 			"NOT EXISTS (SELECT 1 FROM exam_combination_items AS eci WHERE eci.exam_combination_id = ec.id AND eci.exam_subject_id NOT IN ?)",
 			examSubjectIDs,

@@ -45,4 +45,7 @@ type RoadmapService interface {
 	// GetEmployerFeedback возвращает последний ответ работодателя и историю
 	// статусов по последней заявке пользователя.
 	GetEmployerFeedback(ctx context.Context, userID int64) (dto.EmployerApplicationResponse, error)
+
+	// ListEmployerApplications возвращает все заявки пользователя и историю ответов по каждой.
+	ListEmployerApplications(ctx context.Context, userID int64) ([]dto.EmployerApplicationResponse, error)
 }

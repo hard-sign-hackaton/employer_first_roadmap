@@ -7,6 +7,7 @@ type University struct {
 	Name        string `json:"name" gorm:"size:255;not null;uniqueIndex:ux_university_per_region"`
 	Description string `json:"description"`
 	WebsiteURL  string `json:"website_url" gorm:"size:500"`
+	IsActive    bool   `json:"is_active" gorm:"not null;default:true;index"`
 
 	Region   Region             `json:"region" gorm:"foreignKey:RegionID"`
 	Programs []EducationProgram `json:"programs" gorm:"foreignKey:UniversityID"`
@@ -19,6 +20,7 @@ type EducationProgram struct {
 	Code         string `json:"code" gorm:"size:32"`
 	Name         string `json:"name" gorm:"size:255;not null"`
 	Description  string `json:"description"`
+	IsActive     bool   `json:"is_active" gorm:"not null;default:true;index"`
 
 	University       University              `json:"university" gorm:"foreignKey:UniversityID"`
 	ExamCombinations []ExamCombination       `json:"exam_combinations" gorm:"foreignKey:EducationProgramID"`

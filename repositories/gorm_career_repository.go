@@ -21,7 +21,7 @@ func NewGormCareerRepository(db *gorm.DB) *GormCareerRepository {
 }
 
 func (r *GormCareerRepository) FindCompanies(ctx context.Context, query string, limit int) ([]models.Company, error) {
-	companiesQuery := r.db.WithContext(ctx).Order("name ASC")
+	companiesQuery := r.db.WithContext(ctx).Where("is_active = ?", true).Order("name ASC")
 	if query != "" {
 		companiesQuery = companiesQuery.Where("LOWER(name) LIKE LOWER(?)", "%"+query+"%")
 	}
@@ -36,13 +36,15 @@ func (r *GormCareerRepository) FindCompanies(ctx context.Context, query string, 
 
 func (r *GormCareerRepository) FindCompanyByID(ctx context.Context, companyID int64) (models.Company, error) {
 	var company models.Company
-	err := r.db.WithContext(ctx).First(&company, companyID).Error
+	err := r.db.WithContext(ctx).Where("is_active = ?", true).First(&company, companyID).Error
 	return company, err
 }
 
 func (r *GormCareerRepository) ListCompaniesWithDirectionsAndTags(ctx context.Context, limit int) ([]models.Company, error) {
 	companiesQuery := r.db.WithContext(ctx).
 		Preload("CareerDirections.InterestTags.InterestTag").
+		Preload("CareerDirections", "is_active = ?", true).
+		Where("companies.is_active = ?", true).
 		Order("name ASC")
 	if limit > 0 {
 		companiesQuery = companiesQuery.Limit(limit)
@@ -57,7 +59,7 @@ func (r *GormCareerRepository) ListCareerDirectionsByCompany(ctx context.Context
 	var directions []models.CareerDirection
 	err := r.db.WithContext(ctx).
 		Preload("InterestTags.InterestTag").
-		Where("company_id = ?", companyID).
+		Where("company_id = ? AND is_active = ?", companyID, true).
 		Order("name ASC").
 		Find(&directions).Error
 	return directions, err
@@ -68,6 +70,7 @@ func (r *GormCareerRepository) FindCareerDirectionByID(ctx context.Context, care
 	err := r.db.WithContext(ctx).
 		Preload("Company").
 		Preload("InterestTags.InterestTag").
+		Where("career_directions.is_active = ?", true).
 		First(&direction, careerDirectionID).Error
 	return direction, err
 }

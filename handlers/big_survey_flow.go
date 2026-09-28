@@ -33,6 +33,14 @@ func handleBigSurveyMessage(ctx maxbot.Context) error {
 		s.Grade = int16(grade)
 		return showBigRegions(ctx)
 	case models.UserStateBigSurveyWaitingRegion:
+		if text == "Другое" {
+			keyboard := model.NewKeyboard()
+			keyboard.AddRow().AddMessage("Вернуться к выбору региона")
+			return ctx.Send("Сейчас в каталоге нет информации по другим регионам. Вернитесь позже или выберите регион из доступного списка.", maxbot.WithKeyboard(keyboard))
+		}
+		if text == "Вернуться к выбору региона" {
+			return resendBigRegions(ctx, "Выберите регион из доступных:")
+		}
 		index, ok := choice(text, len(s.RegionIDs))
 		if !ok {
 			return resendBigRegions(ctx, "Выберите номер региона с клавиатуры.")
@@ -128,6 +136,12 @@ func handleBigSurveyMessage(ctx maxbot.Context) error {
 		if err := saveChangedRelocation(ctx, true); err != nil {
 			return ctx.Send("Не удалось сохранить решение о переезде.")
 		}
+		// Если локально не нашлось ни одного направления, пользователь ещё не
+		// выбирал направление. После смены географии нужно сначала показать их,
+		// а не запускать проверку траектории с пустым идентификатором.
+		if s.CareerDirectionID == 0 {
+			return showBigDirections(ctx)
+		}
 		return continueBigTrajectoryAfterDirection(ctx)
 	case models.UserStateBigSurveyWaitingCompanyPathResolution:
 		switch text {
@@ -197,6 +211,7 @@ func showBigRegions(ctx maxbot.Context) error {
 		s.RegionIDs = append(s.RegionIDs, region.ID)
 		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, region.Name))
 	}
+	keyboard.AddRow().AddMessage("Другое")
 	utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingRegion)
 	return ctx.Send("2. Выберите регион:", maxbot.WithKeyboard(keyboard))
 }
@@ -588,7 +603,7 @@ var surveyActivityProfiles = []surveyActivityProfile{
 	{Key: "research", Label: "Исследовать и находить закономерности", TagWeights: map[string]float64{"Исследования": 2, "Аналитика": 1.4, "Математика": 1, "Физика": .8, "Химия": .8, "Биология": .8, "Экология": .8}},
 	{Key: "people", Label: "Помогать людям и общаться", TagWeights: map[string]float64{"Коммуникация": 2, "Медицина": 1.4, "Английский язык": .6}},
 	{Key: "projects", Label: "Организовывать и развивать проекты", TagWeights: map[string]float64{"Управление продуктом": 2, "Аналитика": 1.3, "Логистика": 1.3, "Коммуникация": .8}},
-	{Key: "creative", Label: "Придумывать, писать и создавать визуальное", TagWeights: map[string]float64{"Дизайн": 2, "Техническая документация": 1.5, "Коммуникация": 1.2, "Английский язык": .8}},
+	{Key: "creative", Label: "Создавать тексты и визуал", TagWeights: map[string]float64{"Дизайн": 2, "Техническая документация": 1.5, "Коммуникация": 1.2, "Английский язык": .8}},
 }
 
 func surveyActivityProfileByKey(key string) (surveyActivityProfile, bool) {

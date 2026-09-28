@@ -68,7 +68,7 @@ func main() {
 	}
 	apiServer := &http.Server{
 		Addr:              ":" + apiPort,
-		Handler:           employerapi.NewHandler(employerapi.NewStore(db), os.Getenv("EMPLOYER_API_KEY"), os.Getenv("EMPLOYER_ALLOWED_ORIGIN")),
+		Handler:           employerapi.NewHandler(employerapi.NewStore(db), os.Getenv("ADMIN_API_TOKEN"), os.Getenv("EMPLOYER_ALLOWED_ORIGIN")),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,

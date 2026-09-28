@@ -202,25 +202,17 @@ func (s *roadmapService) SubmitEmployerApplication(ctx context.Context, userID i
 	if roadmap.Status != models.RoadmapStatusActive {
 		return dto.EmployerApplicationResponse{}, fmt.Errorf("only an active roadmap can submit an employer application")
 	}
+	if roadmap.EnrollmentChoice == nil || roadmap.EnrollmentChoice.Status != models.EnrollmentStatusChosen {
+		return dto.EmployerApplicationResponse{}, fmt.Errorf("an enrolled education program is required before applying to employer")
+	}
 	var opportunityID int64
 	for _, step := range roadmap.Steps {
-		if step.StepType == models.RoadmapStepTypeEmployerExperience && step.Status == models.RoadmapStepStatusCompleted && step.CompanyOpportunityID != nil {
+		if step.StepType == models.RoadmapStepTypeEmployerExperience && step.CompanyOpportunityID != nil {
 			opportunityID = *step.CompanyOpportunityID
 		}
 	}
 	if opportunityID == 0 {
-		return dto.EmployerApplicationResponse{}, fmt.Errorf("complete an employer opportunity before applying")
-	}
-	var nextStep *models.RoadmapStep
-	for index := range roadmap.Steps {
-		step := &roadmap.Steps[index]
-		if step.Status == models.RoadmapStepStatusActive || step.Status == models.RoadmapStepStatusPending {
-			nextStep = step
-			break
-		}
-	}
-	if nextStep == nil || nextStep.StepType != models.RoadmapStepTypeApplyToEmployer {
-		return dto.EmployerApplicationResponse{}, fmt.Errorf("employer application is not the current roadmap step")
+		return dto.EmployerApplicationResponse{}, fmt.Errorf("an employer opportunity is not selected yet")
 	}
 	saved, err := s.roadmaps.SaveEmployerApplication(ctx, models.RoadmapEmployerApplication{RoadmapID: roadmap.ID, CompanyOpportunityID: opportunityID, Status: "submitted", SubmittedAt: time.Now().UTC()})
 	if err != nil {
@@ -235,6 +227,18 @@ func (s *roadmapService) GetEmployerFeedback(ctx context.Context, userID int64) 
 		return dto.EmployerApplicationResponse{}, fmt.Errorf("find employer application: %w", err)
 	}
 	return employerApplicationResponse(application), nil
+}
+
+func (s *roadmapService) ListEmployerApplications(ctx context.Context, userID int64) ([]dto.EmployerApplicationResponse, error) {
+	applications, err := s.roadmaps.ListEmployerApplicationsByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list employer applications: %w", err)
+	}
+	result := make([]dto.EmployerApplicationResponse, 0, len(applications))
+	for _, application := range applications {
+		result = append(result, employerApplicationResponse(application))
+	}
+	return result, nil
 }
 
 func roadmapSteps(template models.RoadmapTemplate) []models.RoadmapStep {

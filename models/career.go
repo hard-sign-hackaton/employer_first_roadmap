@@ -8,6 +8,7 @@ type Company struct {
 	Name        string `json:"name" gorm:"size:200;not null;unique"`
 	Description string `json:"description"`
 	WebsiteURL  string `json:"website_url" gorm:"size:500"`
+	IsActive    bool   `json:"is_active" gorm:"not null;default:true;index"`
 
 	CareerDirections []CareerDirection    `json:"career_directions" gorm:"foreignKey:CompanyID"`
 	Opportunities    []CompanyOpportunity `json:"opportunities" gorm:"foreignKey:CompanyID"`
@@ -19,6 +20,7 @@ type CareerDirection struct {
 	CompanyID   int64  `json:"company_id" gorm:"not null;uniqueIndex:ux_career_direction_per_company"`
 	Name        string `json:"name" gorm:"size:200;not null;uniqueIndex:ux_career_direction_per_company"`
 	Description string `json:"description"`
+	IsActive    bool   `json:"is_active" gorm:"not null;default:true;index"`
 
 	Company       Company                      `json:"company" gorm:"foreignKey:CompanyID"`
 	InterestTags  []CareerDirectionInterestTag `json:"interest_tags" gorm:"foreignKey:CareerDirectionID"`

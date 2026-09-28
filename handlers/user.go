@@ -36,32 +36,35 @@ func welcomeMessage() string {
 }
 
 func ShowEmployerFeedback(ctx maxbot.Context) error {
-	application, err := app.Roadmap.GetEmployerFeedback(context.Background(), ctx.Update().UserID)
+	applications, err := app.Roadmap.ListEmployerApplications(context.Background(), ctx.Update().UserID)
 	if err != nil {
 		return ctx.Send("У вас пока нет заявки работодателю. Она появится после финального шага roadmap.")
 	}
+	if len(applications) == 0 {
+		return ctx.Send("У вас пока нет заявок работодателям.")
+	}
 	var text strings.Builder
-	text.WriteString("Обратная связь работодателя\n\n")
-	if application.CompanyName != "" {
-		fmt.Fprintf(&text, "Компания: %s\n", application.CompanyName)
-	}
-	if application.OpportunityName != "" {
-		fmt.Fprintf(&text, "Возможность: %s\n", application.OpportunityName)
-	}
-	fmt.Fprintf(&text, "Статус: %s", employerFeedbackStatusLabel(application.Status))
-	if application.Message != "" {
-		fmt.Fprintf(&text, "\n\nСообщение работодателя:\n%s", application.Message)
-	}
-	if application.Contact != "" {
-		fmt.Fprintf(&text, "\n\nКонтакт для связи: %s", application.Contact)
-	}
-	if application.Status == "submitted" {
-		text.WriteString("\n\nЗаявка отправлена. Работодатель ещё не оставил ответ.")
-	}
-	if len(application.History) > 1 {
-		text.WriteString("\n\nИстория статусов:")
-		for _, feedback := range application.History {
-			fmt.Fprintf(&text, "\n• %s — %s", feedback.CreatedAt.Format("02.01.2006 15:04"), employerFeedbackStatusLabel(feedback.Status))
+	text.WriteString("Заявки работодателям")
+	for index, application := range applications {
+		fmt.Fprintf(&text, "\n\n%d. %s", index+1, application.CompanyName)
+		if application.OpportunityName != "" {
+			fmt.Fprintf(&text, " — %s", application.OpportunityName)
+		}
+		fmt.Fprintf(&text, "\nСтатус: %s", employerFeedbackStatusLabel(application.Status))
+		if application.Message != "" {
+			fmt.Fprintf(&text, "\nСообщение: %s", application.Message)
+		}
+		if application.Contact != "" {
+			fmt.Fprintf(&text, "\nКонтакт: %s", application.Contact)
+		}
+		if application.Status == "submitted" {
+			text.WriteString("\nРаботодатель ещё не оставил ответ.")
+		}
+		if len(application.History) > 1 {
+			text.WriteString("\nИстория:")
+			for _, feedback := range application.History {
+				fmt.Fprintf(&text, "\n• %s — %s", feedback.CreatedAt.Format("02.01.2006 15:04"), employerFeedbackStatusLabel(feedback.Status))
+			}
 		}
 	}
 	return ctx.Send(text.String())

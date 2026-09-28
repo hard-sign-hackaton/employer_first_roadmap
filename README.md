@@ -2,7 +2,7 @@
 ```
 BOT_TOKEN="token"
 EMPLOYER_API_PORT=8080
-EMPLOYER_API_KEY="replace-with-a-secret"
+ADMIN_API_TOKEN="replace-with-a-secret"
 EMPLOYER_ALLOWED_ORIGIN="http://localhost:3000"
 ```
 
@@ -10,40 +10,42 @@ EMPLOYER_ALLOWED_ORIGIN="http://localhost:3000"
 
 API запускается вместе с ботом на `EMPLOYER_API_PORT` и сохраняет данные в ту
 же PostgreSQL, из которой пользовательские сценарии получают компании,
-направления, ЕГЭ, вузы и возможности работодателя. `SEED_DEMO_DATA=false`
-оставляет единственным источником каталога данные, введённые работодателем.
+направления, ЕГЭ, вузы и возможности работодателя. Токены индивидуальны:
+в БД хранится только SHA-256-хэш токена.
 
 Ручки:
 
-- `POST /api/v1/employer/catalog` — создать полный каталог работодателя;
-- `GET /api/v1/employer/catalog/{companyID}` — получить сохранённую форму;
-- `PUT /api/v1/employer/catalog/{companyID}` — атомарно обновить каталог;
-- `PATCH /api/v1/employer/opportunities/{opportunityID}/status` — быстро
-  включить или выключить стажировку, практику, проект либо целевое обучение;
-- `GET /api/v1/employer/companies/{companyID}/applications` — получить заявки
-  пользователей и всю историю ответов;
+- `GET /api/v1/me` и `GET /api/v1/reference-data` — профиль API-аккаунта и
+  неизменяемые справочники;
+- `GET /api/v1/education-programs` — готовый список ОП, из которого
+  работодатель выбирает программы для направления;
+- `/api/v1/employer/company`, `/directions`, `/opportunities` — кабинет
+  работодателя. Компания определяется токеном, а не параметром URL;
+- `PUT /api/v1/employer/directions/{id}/education-programs` — связать своё
+  направление с уже существующими ОП;
+- `GET /api/v1/employer/applications` — получить заявки только своей компании;
 - `PATCH /api/v1/employer/applications/{applicationID}` — отправить пользователю
   статус, сообщение и контакт работодателя;
-- `GET /api/v1/employer/reference-data` — справочники и допустимые enum;
+- `/api/v1/admin/*` — backoffice администратора: аккаунты, компании, вузы, ОП,
+  наборы ЕГЭ, проходные баллы, правила приёма и шаблоны roadmap;
 - `GET /healthz` — проверка процесса без авторизации.
 
-Все ручки `/api/v1/employer/*` принимают ключ как
-`Authorization: Bearer <EMPLOYER_API_KEY>` либо `X-API-Key`. Если переменная не
-задана, авторизация отключена — это удобно только для локальной разработки.
+Все ручки, кроме `/healthz`, требуют `Authorization: Bearer <token>`.
+При старте `ADMIN_API_TOKEN` создаёт или обновляет аккаунт `bootstrap-admin`.
+Администратор создаёт аккаунт работодателя через `POST /api/v1/admin/accounts`;
+сгенерированный токен возвращается только в ответе на создание или перевыпуск.
+Администратор получает списки всех динамических сущностей через `GET`-ручки
+`/api/v1/admin/*`. Вместо опасного удаления у компаний, направлений,
+возможностей, вузов и ОП есть `PATCH .../archive` с телом
+`{"is_active": false}`; архивные записи не попадают в новые рекомендации бота,
+но сохраняются для истории roadmap.
 Для браузерной формы укажите её точный origin в `EMPLOYER_ALLOWED_ORIGIN`.
-
-Пример создания связного каталога находится в
-[`docs/employer-catalog.example.json`](docs/employer-catalog.example.json).
-Запрос создаётся транзакционно: при ошибке ни одна часть формы не сохраняется.
-Для нового направления без блока `roadmap` API создаёт обязательные девять
-шагов бота автоматически. В пользовательском окружении не включайте
-`APP_ENV=demo` и не задавайте `SEED_DEMO_DATA=true`.
 
 Ответ на заявку отправляется так:
 
 ```http
 PATCH /api/v1/employer/applications/123
-Authorization: Bearer <EMPLOYER_API_KEY>
+Authorization: Bearer <employer-token>
 Content-Type: application/json
 
 {

@@ -7,20 +7,18 @@ import (
 )
 
 func TestHealthIsPublic(t *testing.T) {
-	handler := NewHandler(nil, "secret")
-	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	handler := NewHandler(nil, "")
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
 	}
 }
 
-func TestEmployerAPIRequiresConfiguredKey(t *testing.T) {
-	handler := NewHandler(nil, "secret")
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/employer/reference-data", nil)
+func TestProtectedRouteRequiresBearerToken(t *testing.T) {
+	handler := NewHandler(nil, "")
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/me", nil))
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
 	}

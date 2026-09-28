@@ -31,7 +31,7 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 	switch state {
 	case models.UserStateRoadmapOverview:
 		switch text {
-		case "Продолжить", "Начать обучение", "Открыть возможность работодателя", "Подать заявку в компанию":
+		case "Продолжить", "Начать обучение", "Открыть возможность работодателя", "Подать заявку на работу в компанию":
 			return continueActiveRoadmap(ctx)
 		case "Показать весь план":
 			return showFullCurrentActiveRoadmap(ctx)
@@ -115,13 +115,22 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 		}
 		return resendLearningProgress(ctx, "Выберите действие с клавиатуры.")
 	case models.UserStateRoadmapEmployerExperience:
+		if text == "Я отправил заявку" {
+			if _, err := app.Roadmap.SubmitEmployerApplication(context.Background(), id, dto.GetRoadmapRequest{RoadmapID: s.RoadmapID}); err != nil {
+				return ctx.Send("Не удалось сохранить подтверждение заявки: " + err.Error())
+			}
+			if err := ctx.Send("Подтверждение сохранено. Стажировка или практика остаётся текущим шагом roadmap; после завершения отметьте её отдельной кнопкой."); err != nil {
+				return err
+			}
+			return showEmployerExperience(ctx)
+		}
 		if isEmployerExperienceCompletedAction(text) {
 			completeNextRoadmapStep(ctx)
 			return showCurrentActiveRoadmap(ctx)
 		}
 		return resendRoadmapAction(ctx, "Когда возможность работодателя будет завершена, нажмите кнопку подтверждения завершения.")
 	case models.UserStateRoadmapEmployerApplication:
-		if text == "Подать заявку" {
+		if text == "Я отправил заявку" {
 			if _, err := app.Roadmap.SubmitEmployerApplication(context.Background(), id, dto.GetRoadmapRequest{RoadmapID: s.RoadmapID}); err != nil {
 				return ctx.Send("Не удалось сохранить заявку: " + err.Error())
 			}
@@ -132,8 +141,11 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 			}
 			return showRoadmapCompletion(ctx)
 		}
-		return resendRoadmapAction(ctx, "Нажмите «Подать заявку», когда документы для компании готовы.")
+		return resendRoadmapAction(ctx, "Сначала перейдите на сайт работодателя и подайте заявку там, затем нажмите «Я отправил заявку».")
 	case models.UserStateRoadmapCompleted:
+		if text == "Проверить статус заявок" {
+			return ShowEmployerFeedback(ctx)
+		}
 		if text != "Начать новый roadmap" {
 			return ctx.Send("Roadmap уже завершён. Нажмите «Начать новый roadmap», чтобы построить новый путь.")
 		}
@@ -293,7 +305,12 @@ func continueActiveRoadmap(ctx maxbot.Context) error {
 		utils.UpdateUserStateStorage(id, models.UserStateRoadmapAdmissionSubmitting)
 		kb := model.NewKeyboard()
 		kb.AddRow().AddMessage("Документы поданы")
-		return ctx.Send("План подачи сохранён. Подайте документы в выбранные вузы и отметьте этот шаг после подачи.", maxbot.WithKeyboard(kb))
+		applications, err := app.Admission.GetAdmissionPlan(context.Background(), id, dto.GetAdmissionPlanRequest{RoadmapID: roadmap.ID})
+		if err != nil || len(applications) == 0 {
+			return ctx.Send("План подачи сохранён, но список выбранных вузов временно недоступен. Откройте roadmap позже.", maxbot.WithKeyboard(kb))
+		}
+		message := "План подачи сохранён. Подайте документы в выбранные вузы и отметьте этот шаг после подачи:\n" + admissionPlanUniversitiesMessage(applications)
+		return ctx.Send(message, maxbot.WithKeyboard(kb))
 	case models.RoadmapStepTypeConfirmEnrollment:
 		return showEnrollmentChoice(ctx)
 	case models.RoadmapStepTypeLearnAtUniversity:
@@ -317,7 +334,7 @@ func roadmapPrimaryAction(stepType string) string {
 	case models.RoadmapStepTypeEmployerExperience:
 		return "Открыть возможность работодателя"
 	case models.RoadmapStepTypeApplyToEmployer:
-		return "Подать заявку в компанию"
+		return "Подать заявку на работу в компанию"
 	default:
 		return "Продолжить"
 	}
@@ -515,6 +532,9 @@ func handleNoUniversityOptions(ctx maxbot.Context, expandGeography bool) error {
 		return ctx.Send("По вашим ЕГЭ и баллам подходящие программы есть, но в регионе «"+profile.Region.Name+"» их нет в каталоге работодателей.\n\nВы указали, что не готовы к переезду. Хотите посмотреть варианты в других регионах?", maxbot.WithKeyboard(kb))
 	}
 	kb := model.NewKeyboard()
+	if diagnosis.Reason == "minimum_scores_not_met" {
+		kb.AddRow().AddMessage("Ввести баллы заново")
+	}
 	kb.AddRow().AddMessage("Пересмотреть траекторию")
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapPostAdmission)
 	return ctx.Send(noUniversityOptionsMessage(diagnosis), maxbot.WithKeyboard(kb))
@@ -754,9 +774,7 @@ func showLearningProgress(ctx maxbot.Context) error {
 	if opportunity, err := app.Roadmap.GetEmployerOpportunity(context.Background(), id, dto.GetRoadmapRequest{RoadmapID: s.RoadmapID}); err == nil {
 		experience := employerOpportunityLabel(opportunity.Type)
 		text += fmt.Sprintf("\n\nВыбранный работодатель предоставляет %s «%s», доступную с %d курса. Отучитесь до %d курса, подготовьте необходимые документы и затем нажмите «%s».", experience, opportunity.Name, opportunity.MinStudyYear, opportunity.MinStudyYear, startOpportunityAction(opportunity.Type))
-		if opportunity.CompanyWebsiteURL != "" {
-			text += "\nПодробнее о компании: " + opportunity.CompanyWebsiteURL
-		}
+		text += employerOpportunityLink(opportunity)
 		kb.AddRow().AddMessage(startOpportunityAction(opportunity.Type))
 	} else {
 		text += "\n\nДля выбранной компании, направления и региона вуза в каталоге пока нет возможности работодателя. Учебный этап остаётся активным до появления данных."
@@ -825,10 +843,9 @@ func showEmployerExperience(ctx maxbot.Context) error {
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapEmployerExperience)
 	kb := model.NewKeyboard()
 	kb.AddRow().AddMessage(employerExperienceCompletedAction(opportunity.Type))
-	text := fmt.Sprintf("%s «%s»\n\n%s\n\nПосле завершения нажмите «%s».", titleEmployerOpportunity(opportunity.Type), opportunity.Name, opportunity.Description, employerExperienceCompletedAction(opportunity.Type))
-	if opportunity.CompanyWebsiteURL != "" {
-		text += "\nПодробнее о компании: " + opportunity.CompanyWebsiteURL
-	}
+	kb.AddRow().AddMessage("Я отправил заявку")
+	text := fmt.Sprintf("%s «%s»\n\n%s\n\nПодать заявку нужно самостоятельно на сайте работодателя. После отправки формы нажмите «Я отправил заявку». После завершения возможности отдельно нажмите «%s».", titleEmployerOpportunity(opportunity.Type), opportunity.Name, opportunity.Description, employerExperienceCompletedAction(opportunity.Type))
+	text += employerOpportunityLink(opportunity)
 	return ctx.Send(text, maxbot.WithKeyboard(kb))
 }
 
@@ -874,13 +891,11 @@ func showEmployerApplication(ctx maxbot.Context) error {
 	s := utils.GetSmallSurvey(id)
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapEmployerApplication)
 	kb := model.NewKeyboard()
-	kb.AddRow().AddMessage("Подать заявку")
-	message := "Практический этап завершён. Подготовьте документы и подтвердите подачу заявки в компанию."
+	kb.AddRow().AddMessage("Я отправил заявку")
+	message := "Практический этап завершён. Перейдите на сайт работодателя, подайте заявку самостоятельно и только после этого подтвердите отправку в боте."
 	if opportunity, err := app.Roadmap.GetEmployerOpportunity(context.Background(), id, dto.GetRoadmapRequest{RoadmapID: s.RoadmapID}); err == nil {
-		message = fmt.Sprintf("Практический этап завершён. Подготовьте документы и подтвердите подачу заявки в компанию «%s».", opportunity.CompanyName)
-		if opportunity.CompanyWebsiteURL != "" {
-			message += "\nПодробнее о компании: " + opportunity.CompanyWebsiteURL
-		}
+		message = fmt.Sprintf("Практический этап завершён. Чтобы подать заявку в компанию «%s», перейдите по ссылке, заполните форму на стороне работодателя и затем нажмите «Я отправил заявку».", opportunity.CompanyName)
+		message += employerOpportunityLink(opportunity)
 	}
 	return ctx.Send(message, maxbot.WithKeyboard(kb))
 }
@@ -889,8 +904,19 @@ func showRoadmapCompletion(ctx maxbot.Context) error {
 	id := ctx.Update().UserID
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapCompleted)
 	kb := model.NewKeyboard()
+	kb.AddRow().AddMessage("Проверить статус заявок")
 	kb.AddRow().AddMessage("Начать новый roadmap")
-	return ctx.Send("Поздравляем! Вы завершили roadmap и подали заявку в компанию. Проверяйте ответ работодателя командой /feedback.", maxbot.WithKeyboard(kb))
+	return ctx.Send("Поздравляем! Вы завершили roadmap и подтвердили, что отправили заявку работодателю на его сайте. Проверяйте ответ работодателя командой /feedback.", maxbot.WithKeyboard(kb))
+}
+
+func employerOpportunityLink(opportunity dto.CompanyOpportunityResponse) string {
+	if opportunity.URL != "" {
+		return "\nПодробнее и подача заявки: " + opportunity.URL
+	}
+	if opportunity.CompanyWebsiteURL != "" {
+		return "\nПодробнее о компании: " + opportunity.CompanyWebsiteURL
+	}
+	return ""
 }
 
 func handleRoadmapPostAdmission(ctx maxbot.Context, text string) error {
@@ -899,6 +925,8 @@ func handleRoadmapPostAdmission(ctx maxbot.Context, text string) error {
 	switch text {
 	case "Расширить географию поиска":
 		return showRoadmapUniversityOptions(ctx, true)
+	case "Ввести баллы заново":
+		return showRoadmapExamScores(ctx)
 	case "Пересмотреть траекторию":
 		if err := app.Roadmap.ArchiveRoadmapForRevision(context.Background(), id, dto.GetRoadmapRequest{RoadmapID: s.RoadmapID}); err != nil {
 			return ctx.Send("Не удалось сохранить текущий roadmap в истории. Попробуйте позже.")

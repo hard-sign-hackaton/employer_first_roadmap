@@ -358,7 +358,7 @@ func seedRoadmapTemplates(tx *gorm.DB, directions map[string]models.CareerDirect
 			return err
 		}
 		steps := []struct{ typ, title string }{
-			{models.RoadmapStepTypeChooseOrConfirmExams, "Подтвердить набор ЕГЭ"}, {models.RoadmapStepTypePrepareForExams, "Подготовиться к ЕГЭ"}, {models.RoadmapStepTypePassExams, "Сдать ЕГЭ"}, {models.RoadmapStepTypeChooseUniversity, "Выбрать вузы и образовательные программы"}, {models.RoadmapStepTypeSubmitAdmissionDocuments, "Подать документы"}, {models.RoadmapStepTypeConfirmEnrollment, "Подтвердить зачисление"}, {models.RoadmapStepTypeLearnAtUniversity, "Учиться в выбранном вузе"}, {models.RoadmapStepTypeEmployerExperience, "Получить практический опыт у работодателя"}, {models.RoadmapStepTypeApplyToEmployer, "Подать документы в компанию"},
+			{models.RoadmapStepTypeChooseOrConfirmExams, "Подтвердить набор ЕГЭ"}, {models.RoadmapStepTypePrepareForExams, "Подготовиться к ЕГЭ"}, {models.RoadmapStepTypePassExams, "Сдать ЕГЭ"}, {models.RoadmapStepTypeChooseUniversity, "Выбрать вузы и образовательные программы"}, {models.RoadmapStepTypeSubmitAdmissionDocuments, "Подать документы"}, {models.RoadmapStepTypeConfirmEnrollment, "Подтвердить зачисление"}, {models.RoadmapStepTypeLearnAtUniversity, "Учиться в выбранном вузе"}, {models.RoadmapStepTypeEmployerExperience, "Получить практический опыт у работодателя"}, {models.RoadmapStepTypeApplyToEmployer, "Подать заявку на работу в компанию"},
 		}
 		if err := upsertRoadmapTemplateSteps(tx, template.ID, steps); err != nil {
 			return err

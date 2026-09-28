@@ -20,7 +20,7 @@ services:
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
       - EMPLOYER_API_PORT=${EMPLOYER_API_PORT:-8080}
-      - EMPLOYER_API_KEY=${EMPLOYER_API_KEY:-}
+      - ADMIN_API_TOKEN=${ADMIN_API_TOKEN:-}
       - EMPLOYER_ALLOWED_ORIGIN=${EMPLOYER_ALLOWED_ORIGIN:-}
       - DB_HOST=postgres
       - DB_PORT=5432

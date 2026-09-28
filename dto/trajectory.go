@@ -5,6 +5,7 @@ type CompanyCatalogItemResponse struct {
 	ID          int64  `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	WebsiteURL  string `json:"website_url,omitempty"`
 }
 
 // FindCompaniesRequest задаёт поиск работодателя в каталоге для минимального опроса.
@@ -60,6 +61,42 @@ type RecommendedExamSetResponse struct {
 // GetRecommendedExamSetsRequest запрашивает наборы ЕГЭ для выбранного карьерного направления.
 type GetRecommendedExamSetsRequest struct {
 	CareerDirectionID int64 `json:"career_direction_id"`
+}
+
+const (
+	TrajectoryPathStatusAvailable            = "available"
+	TrajectoryPathStatusRelocationRequired   = "relocation_required"
+	TrajectoryPathStatusUnavailable          = "unavailable"
+	TrajectoryPathIssueNoEducationInRegion   = "no_education_in_region"
+	TrajectoryPathIssueNoOpportunityInRegion = "no_employer_opportunity_in_region"
+	TrajectoryPathIssueNoCatalogPath         = "no_catalog_path"
+)
+
+const (
+	CompanyRecommendationIssueRelocationRequired = "relocation_required"
+	CompanyRecommendationIssueNoCatalogPath      = "no_catalog_path"
+)
+
+// CompanyRecommendationDiagnosisResponse объясняет, почему полный опрос не
+// смог показать ни одной компании после фильтрации по профилю пользователя.
+type CompanyRecommendationDiagnosisResponse struct {
+	Issue string `json:"issue"`
+}
+
+// AssessTrajectoryPathRequest проверяет, что выбранное направление ведёт к ОП
+// и активной возможности работодателя. Если ExamSubjectIDs не переданы,
+// сервис оценивает рекомендованные наборы ЕГЭ для 9–10 класса.
+type AssessTrajectoryPathRequest struct {
+	CareerDirectionID int64   `json:"career_direction_id"`
+	ExamSubjectIDs    []int64 `json:"exam_subject_ids,omitempty"`
+}
+
+// TrajectoryPathAssessmentResponse описывает жизнеспособность пути по данным
+// каталога. ExamSets заполняется только для планируемых ЕГЭ.
+type TrajectoryPathAssessmentResponse struct {
+	Status   string                       `json:"status"`
+	Issue    string                       `json:"issue,omitempty"`
+	ExamSets []RecommendedExamSetResponse `json:"exam_sets,omitempty"`
 }
 
 // ConfirmGoalRequest создаёт цель после выбора компании, направления и набора ЕГЭ.

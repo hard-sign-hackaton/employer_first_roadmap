@@ -16,6 +16,9 @@ type TrajectoryService interface {
 	// Вход: dto.RecommendCompaniesRequest и идентификатор пользователя. Выход: список dto.RecommendedCompanyResponse.
 	RecommendCompanies(ctx context.Context, userID int64, request dto.RecommendCompaniesRequest) ([]dto.RecommendedCompanyResponse, error)
 
+	// DiagnoseCompanyRecommendations объясняет отсутствие рекомендаций полного опроса.
+	DiagnoseCompanyRecommendations(ctx context.Context, userID int64) (dto.CompanyRecommendationDiagnosisResponse, error)
+
 	// SelectCompany подтверждает выбор работодателя для дальнейшего сценария.
 	// Вход: dto.SelectCompanyRequest. Выход: dto.CompanyCatalogItemResponse.
 	SelectCompany(ctx context.Context, userID int64, request dto.SelectCompanyRequest) (dto.CompanyCatalogItemResponse, error)
@@ -29,6 +32,11 @@ type TrajectoryService interface {
 	// или для одиннадцатиклассника, который ещё не выбрал ЕГЭ.
 	// Вход: dto.GetRecommendedExamSetsRequest. Выход: список dto.RecommendedExamSetResponse.
 	GetRecommendedExamSets(ctx context.Context, request dto.GetRecommendedExamSetsRequest) ([]dto.RecommendedExamSetResponse, error)
+
+	// AssessTrajectoryPath проверяет полный путь «ЕГЭ → ОП → возможность работодателя».
+	// Вход: dto.AssessTrajectoryPathRequest и идентификатор пользователя.
+	// Выход: dto.TrajectoryPathAssessmentResponse.
+	AssessTrajectoryPath(ctx context.Context, userID int64, request dto.AssessTrajectoryPathRequest) (dto.TrajectoryPathAssessmentResponse, error)
 
 	// ConfirmGoal создаёт цель «компания + направление + набор ЕГЭ».
 	// Вход: dto.ConfirmGoalRequest и идентификатор пользователя. Выход: dto.GoalResponse.

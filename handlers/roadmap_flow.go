@@ -86,6 +86,9 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 		}
 		return resendRoadmapAction(ctx, "Когда документы будут поданы, нажмите «Документы поданы».")
 	case models.UserStateRoadmapEnrollmentChoice:
+		if text == "Продолжить" {
+			return showEnrollmentChoice(ctx)
+		}
 		if text == "Не поступил" {
 			if _, err := app.Admission.SaveEnrollmentChoice(context.Background(), id, dto.GetAdmissionPlanRequest{RoadmapID: s.RoadmapID}, dto.SaveEnrollmentChoiceRequest{Status: models.EnrollmentStatusNotEnrolled}); err != nil {
 				return ctx.Send("Не удалось сохранить результат приёмной кампании. Попробуйте позже.")
@@ -112,20 +115,31 @@ func handleRoadmapMessage(ctx maxbot.Context) error {
 		}
 		return resendLearningProgress(ctx, "Выберите действие с клавиатуры.")
 	case models.UserStateRoadmapEmployerExperience:
-		if text == "Практика завершена" {
+		if isEmployerExperienceCompletedAction(text) {
 			completeNextRoadmapStep(ctx)
 			return showCurrentActiveRoadmap(ctx)
 		}
-		return resendRoadmapAction(ctx, "Когда возможность работодателя будет завершена, нажмите «Практика завершена».")
+		return resendRoadmapAction(ctx, "Когда возможность работодателя будет завершена, нажмите кнопку подтверждения завершения.")
 	case models.UserStateRoadmapEmployerApplication:
 		if text == "Подать заявку" {
 			if _, err := app.Roadmap.SubmitEmployerApplication(context.Background(), id, dto.GetRoadmapRequest{RoadmapID: s.RoadmapID}); err != nil {
 				return ctx.Send("Не удалось сохранить заявку: " + err.Error())
 			}
 			completeNextRoadmapStep(ctx)
-			return showCurrentActiveRoadmap(ctx)
+			roadmap, err := app.Roadmap.GetRoadmap(context.Background(), id, dto.GetRoadmapRequest{RoadmapID: s.RoadmapID})
+			if err != nil || roadmap.Status != models.RoadmapStatusCompleted {
+				return ctx.Send("Заявка сохранена, но не удалось завершить roadmap. Откройте roadmap ещё раз.")
+			}
+			return showRoadmapCompletion(ctx)
 		}
 		return resendRoadmapAction(ctx, "Нажмите «Подать заявку», когда документы для компании готовы.")
+	case models.UserStateRoadmapCompleted:
+		if text != "Начать новый roadmap" {
+			return ctx.Send("Roadmap уже завершён. Нажмите «Начать новый roadmap», чтобы построить новый путь.")
+		}
+		utils.ResetSmallSurvey(id)
+		utils.UpdateUserStateStorage(id, models.UserStateStart)
+		return CallMenu(ctx)
 	case models.UserStateRoadmapPostAdmission:
 		return handleRoadmapPostAdmission(ctx, text)
 	}
@@ -369,15 +383,11 @@ func showRoadmapExamScores(ctx maxbot.Context) error {
 	s.ActualExamScores = make(map[int64]int16)
 	s.ExamScoreStep = 0
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapExamScores)
-	text, kb := actualExamScoreQuestion(s)
-	return ctx.Send("Этап 2. После экзаменов.\n\nЭкзамены сданы — запишем фактические баллы по каждому предмету отдельно.\n\n"+text, maxbot.WithKeyboard(kb))
+	return ctx.Send("Этап 2. После экзаменов.\n\nЭкзамены сданы — запишем фактические баллы по каждому предмету отдельно.\n\n" + actualExamScoreQuestion(s))
 }
 
-func actualExamScoreQuestion(s *utils.SmallSurveyData) (string, *model.Keyboard) {
-	text := fmt.Sprintf("Укажите фактический балл по предмету «%s» (0–100):", s.ActualExamNames[s.ExamScoreStep])
-	kb := model.NewKeyboard()
-	kb.AddRow().AddMessage("Пропустить")
-	return text, kb
+func actualExamScoreQuestion(s *utils.SmallSurveyData) string {
+	return fmt.Sprintf("Укажите фактический балл по предмету «%s» (0–100):", s.ActualExamNames[s.ExamScoreStep])
 }
 
 func handleRoadmapExamScore(ctx maxbot.Context, text string) error {
@@ -386,21 +396,17 @@ func handleRoadmapExamScore(ctx maxbot.Context, text string) error {
 	if s.ExamScoreStep >= len(s.ActualExamIDs) {
 		return ctx.Send("Баллы уже записаны. Начните заново командой /start.")
 	}
-	if !strings.EqualFold(text, "Пропустить") {
-		score, err := strconv.ParseInt(text, 10, 16)
-		if err != nil || score < 0 || score > 100 {
-			if err := ctx.Send("Введите число от 0 до 100 или нажмите «Пропустить»."); err != nil {
-				return err
-			}
-			question, kb := actualExamScoreQuestion(s)
-			return ctx.Send(question, maxbot.WithKeyboard(kb))
+	score, err := strconv.ParseInt(text, 10, 16)
+	if err != nil || score < 0 || score > 100 {
+		if err := ctx.Send("Введите целое число от 0 до 100."); err != nil {
+			return err
 		}
-		s.ActualExamScores[s.ActualExamIDs[s.ExamScoreStep]] = int16(score)
+		return ctx.Send(actualExamScoreQuestion(s))
 	}
+	s.ActualExamScores[s.ActualExamIDs[s.ExamScoreStep]] = int16(score)
 	s.ExamScoreStep++
 	if s.ExamScoreStep < len(s.ActualExamIDs) {
-		text, kb := actualExamScoreQuestion(s)
-		return ctx.Send(text, maxbot.WithKeyboard(kb))
+		return ctx.Send(actualExamScoreQuestion(s))
 	}
 	results := make([]dto.ExamResultInput, 0, len(s.ActualExamScores))
 	for subjectID, score := range s.ActualExamScores {
@@ -449,6 +455,9 @@ func renderRoadmapUniversityOptions(ctx maxbot.Context, expandGeography, edit bo
 		line := fmt.Sprintf("%d. %s — «%s»\n   Регион: %s; правила ЕГЭ: %d; мин. сумма: %s; бюджет: %s; платно: %s%s",
 			index+1, option.UniversityName, option.ProgramName, option.UniversityRegion,
 			option.RulesSourceYear, scoreOrDash(option.MinimumTotalScore), scoreOrDash(option.BudgetPassingScore), scoreOrDash(option.PaidPassingScore), passingScoreSourceLabel(option.PassingScoreSourceYear))
+		if option.UniversityWebsiteURL != "" {
+			line += "\n   Подробнее: " + option.UniversityWebsiteURL
+		}
 		s.AdmissionOptionLines = append(s.AdmissionOptionLines, line)
 		s.AdmissionOptionLabels = append(s.AdmissionOptionLabels, fmt.Sprintf("%d. %s", index+1, option.UniversityName))
 	}
@@ -491,11 +500,13 @@ func handleNoUniversityOptions(ctx maxbot.Context, expandGeography bool) error {
 	if diagnosis.Reason == "region_restriction" && !willingToRelocate && !expandGeography {
 		kb := model.NewKeyboard()
 		kb.AddRow().AddMessage("Расширить географию поиска")
-		kb.AddRow().AddMessage("Начать заново")
+		kb.AddRow().AddMessage("Пересмотреть траекторию")
+		utils.UpdateUserStateStorage(id, models.UserStateRoadmapPostAdmission)
 		return ctx.Send("По вашим ЕГЭ и баллам подходящие программы есть, но в регионе «"+profile.Region.Name+"» их нет в демо-каталоге.\n\nВы указали, что не готовы к переезду. Хотите посмотреть варианты в других регионах?", maxbot.WithKeyboard(kb))
 	}
 	kb := model.NewKeyboard()
-	kb.AddRow().AddMessage("Начать заново")
+	kb.AddRow().AddMessage("Пересмотреть траекторию")
+	utils.UpdateUserStateStorage(id, models.UserStateRoadmapPostAdmission)
 	return ctx.Send(noUniversityOptionsMessage(diagnosis), maxbot.WithKeyboard(kb))
 }
 
@@ -640,10 +651,29 @@ func saveAdmissionPlan(ctx maxbot.Context) error {
 		return ctx.Send("Не удалось сохранить план поступления: проверьте лимиты вузов и программ.")
 	}
 	completeNextRoadmapStep(ctx)
-	if err := ctx.Send(fmt.Sprintf("План подачи сохранён: %d программ(ы). Итоговое зачисление вы укажете после завершения приёмной кампании.", len(applications))); err != nil {
+	selectedUniversities := admissionPlanUniversitiesMessage(applications)
+	message := fmt.Sprintf("План подачи сохранён: %d программ(ы).\n\nПодайте документы в выбранные вузы и отметьте этот шаг после подачи:\n%s\n\nИтоговое зачисление вы укажете после завершения приёмной кампании.", len(applications), selectedUniversities)
+	if err := ctx.Send(message); err != nil {
 		return err
 	}
 	return showCurrentActiveRoadmap(ctx)
+}
+
+func admissionPlanUniversitiesMessage(applications []dto.AdmissionApplicationResponse) string {
+	seen := make(map[int64]bool)
+	lines := make([]string, 0, len(applications))
+	for _, application := range applications {
+		if seen[application.UniversityID] {
+			continue
+		}
+		seen[application.UniversityID] = true
+		line := "• " + application.UniversityName
+		if application.UniversityWebsiteURL != "" {
+			line += "\n  Подробнее: " + application.UniversityWebsiteURL
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func showEnrollmentChoice(ctx maxbot.Context) error {
@@ -712,13 +742,34 @@ func showLearningProgress(ctx maxbot.Context) error {
 	text := fmt.Sprintf("Учебный этап: %s — «%s».", choice.UniversityName, choice.EducationProgramName)
 	kb := model.NewKeyboard()
 	if opportunity, err := app.Roadmap.GetEmployerOpportunity(context.Background(), id, dto.GetRoadmapRequest{RoadmapID: s.RoadmapID}); err == nil {
-		text += fmt.Sprintf("\n\nВ каталоге есть возможность работодателя: %s. Она доступна с %d курса.", opportunity.Name, opportunity.MinStudyYear)
+		experience := employerOpportunityLabel(opportunity.Type)
+		text += fmt.Sprintf("\n\nВыбранный работодатель предоставляет %s «%s», доступную с %d курса. Отучитесь до %d курса, подготовьте необходимые документы и затем нажмите «%s».", experience, opportunity.Name, opportunity.MinStudyYear, opportunity.MinStudyYear, startOpportunityAction(opportunity.Type))
+		if opportunity.CompanyWebsiteURL != "" {
+			text += "\nПодробнее о компании: " + opportunity.CompanyWebsiteURL
+		}
 		kb.AddRow().AddMessage(startOpportunityAction(opportunity.Type))
 	} else {
 		text += "\n\nДля выбранной компании, направления и региона вуза в каталоге пока нет возможности работодателя. Учебный этап остаётся активным до появления данных."
 		kb.AddRow().AddMessage("Вернуться к roadmap")
 	}
 	return ctx.Send(text, maxbot.WithKeyboard(kb))
+}
+
+func employerOpportunityLabel(opportunityType string) string {
+	switch opportunityType {
+	case models.OpportunityTypeInternship:
+		return "стажировку"
+	case models.OpportunityTypePractice:
+		return "практику"
+	case models.OpportunityTypeProject:
+		return "проект"
+	case models.OpportunityTypeHackathon:
+		return "хакатон"
+	case models.OpportunityTypeTargetedTraining:
+		return "целевое обучение"
+	default:
+		return "возможность получить практический опыт"
+	}
 }
 
 func startOpportunityAction(opportunityType string) string {
@@ -763,22 +814,86 @@ func showEmployerExperience(ctx maxbot.Context) error {
 	}
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapEmployerExperience)
 	kb := model.NewKeyboard()
-	kb.AddRow().AddMessage("Практика завершена")
-	return ctx.Send(fmt.Sprintf("Возможность работодателя: %s\n\n%s", opportunity.Name, opportunity.Description), maxbot.WithKeyboard(kb))
+	kb.AddRow().AddMessage(employerExperienceCompletedAction(opportunity.Type))
+	text := fmt.Sprintf("%s «%s»\n\n%s\n\nПосле завершения нажмите «%s».", titleEmployerOpportunity(opportunity.Type), opportunity.Name, opportunity.Description, employerExperienceCompletedAction(opportunity.Type))
+	if opportunity.CompanyWebsiteURL != "" {
+		text += "\nПодробнее о компании: " + opportunity.CompanyWebsiteURL
+	}
+	return ctx.Send(text, maxbot.WithKeyboard(kb))
+}
+
+func titleEmployerOpportunity(opportunityType string) string {
+	switch opportunityType {
+	case models.OpportunityTypeInternship:
+		return "Стажировка"
+	case models.OpportunityTypePractice:
+		return "Практика"
+	case models.OpportunityTypeProject:
+		return "Проект"
+	case models.OpportunityTypeHackathon:
+		return "Хакатон"
+	case models.OpportunityTypeTargetedTraining:
+		return "Целевое обучение"
+	default:
+		return "Практический этап"
+	}
+}
+
+func employerExperienceCompletedAction(opportunityType string) string {
+	return titleEmployerOpportunity(opportunityType) + " завершен"
+}
+
+func isEmployerExperienceCompletedAction(text string) bool {
+	for _, opportunityType := range []string{
+		models.OpportunityTypeInternship,
+		models.OpportunityTypePractice,
+		models.OpportunityTypeProject,
+		models.OpportunityTypeHackathon,
+		models.OpportunityTypeTargetedTraining,
+		"",
+	} {
+		if text == employerExperienceCompletedAction(opportunityType) {
+			return true
+		}
+	}
+	return false
 }
 
 func showEmployerApplication(ctx maxbot.Context) error {
 	id := ctx.Update().UserID
+	s := utils.GetSmallSurvey(id)
 	utils.UpdateUserStateStorage(id, models.UserStateRoadmapEmployerApplication)
 	kb := model.NewKeyboard()
 	kb.AddRow().AddMessage("Подать заявку")
-	return ctx.Send("Практический этап завершён. Подготовьте документы и подтвердите подачу заявки в компанию.", maxbot.WithKeyboard(kb))
+	message := "Практический этап завершён. Подготовьте документы и подтвердите подачу заявки в компанию."
+	if opportunity, err := app.Roadmap.GetEmployerOpportunity(context.Background(), id, dto.GetRoadmapRequest{RoadmapID: s.RoadmapID}); err == nil {
+		message = fmt.Sprintf("Практический этап завершён. Подготовьте документы и подтвердите подачу заявки в компанию «%s».", opportunity.CompanyName)
+		if opportunity.CompanyWebsiteURL != "" {
+			message += "\nПодробнее о компании: " + opportunity.CompanyWebsiteURL
+		}
+	}
+	return ctx.Send(message, maxbot.WithKeyboard(kb))
+}
+
+func showRoadmapCompletion(ctx maxbot.Context) error {
+	id := ctx.Update().UserID
+	utils.UpdateUserStateStorage(id, models.UserStateRoadmapCompleted)
+	kb := model.NewKeyboard()
+	kb.AddRow().AddMessage("Начать новый roadmap")
+	return ctx.Send("Поздравляем! Вы завершили roadmap и подтвердили подачу заявки в компанию. Удачи на следующем карьерном этапе!", maxbot.WithKeyboard(kb))
 }
 
 func handleRoadmapPostAdmission(ctx maxbot.Context, text string) error {
 	id := ctx.Update().UserID
 	s := utils.GetSmallSurvey(id)
 	switch text {
+	case "Расширить географию поиска":
+		return showRoadmapUniversityOptions(ctx, true)
+	case "Пересмотреть траекторию":
+		if err := app.Roadmap.ArchiveRoadmapForRevision(context.Background(), id, dto.GetRoadmapRequest{RoadmapID: s.RoadmapID}); err != nil {
+			return ctx.Send("Не удалось сохранить текущий roadmap в истории. Попробуйте позже.")
+		}
+		return showDirections(ctx)
 	case "Сменить вуз":
 		utils.UpdateUserStateStorage(id, models.UserStateRoadmapUniversityOptions)
 		return showRoadmapUniversityOptions(ctx, false)

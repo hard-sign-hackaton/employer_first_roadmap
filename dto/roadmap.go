@@ -55,13 +55,15 @@ type ReconsiderTrajectoryRequest struct {
 
 // CompanyOpportunityResponse — конкретный шаг практического опыта у выбранного работодателя.
 type CompanyOpportunityResponse struct {
-	ID           int64  `json:"id"`
-	Type         string `json:"type"`
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	URL          string `json:"url,omitempty"`
-	MinStudyYear int16  `json:"min_study_year"`
-	IsAvailable  bool   `json:"is_available"`
+	ID                int64  `json:"id"`
+	CompanyName       string `json:"company_name"`
+	Type              string `json:"type"`
+	Name              string `json:"name"`
+	Description       string `json:"description"`
+	URL               string `json:"url,omitempty"`
+	CompanyWebsiteURL string `json:"company_website_url,omitempty"`
+	MinStudyYear      int16  `json:"min_study_year"`
+	IsAvailable       bool   `json:"is_available"`
 }
 
 // EmployerApplicationResponse подтверждает отправку заявки работодателю.

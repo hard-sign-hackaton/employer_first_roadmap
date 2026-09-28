@@ -86,7 +86,7 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 		return resendExamSubjects(ctx, "Выберите предметы ЕГЭ кнопками ниже и нажмите «Готово».")
 	case models.UserStateSmallSurveyWaitingExamScore:
 		if !collectExamScore(s, text) {
-			return resendExamScore(ctx, "Введите число от 0 до 100 или нажмите «Пропустить».")
+			return resendExamScore(ctx, "Выберите один из диапазонов баллов кнопками ниже.")
 		}
 		if s.ExamScoreStep < len(s.SelectedExamIDs) {
 			text, keyboard := examScoreQuestion(s)
@@ -103,10 +103,29 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 		}
 		s.CareerDirectionID = s.DirectionIDs[n]
 		s.CareerDirectionName = s.DirectionNames[n]
-		if s.Grade == 11 && len(s.SelectedExamIDs) > 0 {
-			return showGoalConfirmation(ctx, models.UserStateSmallSurveyWaitingGoalConfirmation)
+		return continueSmallTrajectoryAfterDirection(ctx)
+	case models.UserStateSmallSurveyWaitingPathResolution:
+		switch text {
+		case "Рассмотреть другие регионы":
+			return showPathRelocationQuestion(ctx, models.UserStateSmallSurveyWaitingPathRelocation)
+		case "Изменить направление":
+			return showDirections(ctx)
+		case "Сменить работодателя":
+			utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingCompanyName)
+			return showSmallCompanies(ctx)
 		}
-		return showSmallRecommendedExamSets(ctx)
+		return ctx.Send("Выберите действие с клавиатуры.")
+	case models.UserStateSmallSurveyWaitingPathRelocation:
+		if text != "Да" && text != "Нет" {
+			return showPathRelocationQuestion(ctx, models.UserStateSmallSurveyWaitingPathRelocation)
+		}
+		if text == "Нет" {
+			return showSmallPathResolution(ctx, dto.TrajectoryPathAssessmentResponse{Status: dto.TrajectoryPathStatusRelocationRequired})
+		}
+		if err := saveChangedRelocation(ctx, true); err != nil {
+			return ctx.Send("Не удалось сохранить решение о переезде.")
+		}
+		return continueSmallTrajectoryAfterDirection(ctx)
 	case models.UserStateSmallSurveyWaitingExamSet:
 		n, ok := choice(text, len(s.ExamSets))
 		if !ok {
@@ -216,12 +235,16 @@ func resendSmallExamSets(ctx maxbot.Context, message string) error {
 func showSmallRecommendedExamSets(ctx maxbot.Context) error {
 	id := ctx.Update().UserID
 	s := utils.GetSmallSurvey(id)
-	sets, err := app.Trajectory.GetRecommendedExamSets(context.Background(), dto.GetRecommendedExamSetsRequest{CareerDirectionID: s.CareerDirectionID})
+	assessment, err := assessCurrentTrajectoryPath(ctx)
 	if err != nil {
 		return ctx.Send("Не удалось подобрать наборы ЕГЭ.")
 	}
+	if assessment.Status != dto.TrajectoryPathStatusAvailable {
+		return showSmallPathResolution(ctx, assessment)
+	}
+	sets := assessment.ExamSets
 	if len(sets) == 0 {
-		return ctx.Send("Для этого направления пока нет наборов ЕГЭ на целевой год. Выберите другое направление.")
+		return showSmallPathResolution(ctx, dto.TrajectoryPathAssessmentResponse{Status: dto.TrajectoryPathStatusUnavailable})
 	}
 	kb := model.NewKeyboard()
 	s.ExamSets, s.ExamSetNames = nil, nil
@@ -239,6 +262,25 @@ func showSmallRecommendedExamSets(ctx maxbot.Context) error {
 	utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingExamSet)
 	return ctx.Send(fmt.Sprintf("Выберите рекомендуемый набор ЕГЭ. Используем последние доступные правила приёма — %d год:\n\n%s\n\nВведите номер набора или нажмите кнопку.", sets[0].SourceYear, strings.Join(lines, "\n")), maxbot.WithKeyboard(kb))
 }
+
+func continueSmallTrajectoryAfterDirection(ctx maxbot.Context) error {
+	s := utils.GetSmallSurvey(ctx.Update().UserID)
+	if (s.Grade != 11 || len(s.SelectedExamIDs) == 0) && len(s.ActualExamIDs) == 0 {
+		return showSmallRecommendedExamSets(ctx)
+	}
+	assessment, err := assessCurrentTrajectoryPath(ctx)
+	if err != nil {
+		return ctx.Send("Не удалось проверить выбранный набор ЕГЭ.")
+	}
+	if assessment.Status != dto.TrajectoryPathStatusAvailable {
+		return showSmallPathResolution(ctx, assessment)
+	}
+	return showGoalConfirmation(ctx, models.UserStateSmallSurveyWaitingGoalConfirmation)
+}
+
+func showSmallPathResolution(ctx maxbot.Context, assessment dto.TrajectoryPathAssessmentResponse) error {
+	return showPathResolution(ctx, models.UserStateSmallSurveyWaitingPathResolution, assessment)
+}
 func showDirections(ctx maxbot.Context) error {
 	id := ctx.Update().UserID
 	s := utils.GetSmallSurvey(id)
@@ -247,21 +289,30 @@ func showDirections(ctx maxbot.Context) error {
 		return ctx.Send("Не удалось получить направления.")
 	}
 	if len(dirs) == 0 {
-		if s.Grade == 11 && len(s.SelectedExamIDs) > 0 {
-			return ctx.Send("В выбранной компании нет направлений, совместимых с выбранными ЕГЭ и ожидаемыми баллами. Начните опрос заново командой /start, чтобы изменить компанию или ЕГЭ.")
+		utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingPathResolution)
+		kb := model.NewKeyboard()
+		if !s.WillingToRelocate {
+			kb.AddRow().AddMessage("Рассмотреть другие регионы")
 		}
-		return ctx.Send("Для выбранной компании пока нет направлений. Начните опрос заново командой /start.")
+		kb.AddRow().AddMessage("Сменить работодателя")
+		return ctx.Send("Для выбранного работодателя нет направлений с доступным путём при текущих ограничениях. Рассмотрите другой регион или выберите другого работодателя.", maxbot.WithKeyboard(kb))
 	}
 	kb := model.NewKeyboard()
 	s.DirectionIDs = nil
 	s.DirectionNames = nil
+	lines := make([]string, 0, len(dirs))
 	for i, d := range dirs {
 		s.DirectionIDs = append(s.DirectionIDs, d.ID)
 		s.DirectionNames = append(s.DirectionNames, d.Name)
+		lines = append(lines, fmt.Sprintf("%d. %s — %s", i+1, d.Name, d.Description))
 		kb.AddRow().AddMessage(fmt.Sprintf("%d. %s", i+1, d.Name))
 	}
 	utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingDirection)
-	return ctx.Send("Выберите карьерное направление:", maxbot.WithKeyboard(kb))
+	prefix := fmt.Sprintf("В компании «%s» вам подходят следующие карьерные направления.", s.CompanyName)
+	if s.Grade == 11 && len(s.SelectedExamIDs) > 0 {
+		prefix = fmt.Sprintf("По вашим выбранным ЕГЭ и указанным баллам в компании «%s» вам подходят следующие направления.", s.CompanyName)
+	}
+	return ctx.Send(prefix+"\n\nВыберите карьерное направление:\n\n"+strings.Join(lines, "\n\n"), maxbot.WithKeyboard(kb))
 }
 func choice(text string, length int) (int, bool) {
 	n, err := strconv.Atoi(strings.Split(text, ".")[0])

@@ -6,6 +6,7 @@ type University struct {
 	RegionID    int64  `json:"region_id" gorm:"not null;uniqueIndex:ux_university_per_region"`
 	Name        string `json:"name" gorm:"size:255;not null;uniqueIndex:ux_university_per_region"`
 	Description string `json:"description"`
+	WebsiteURL  string `json:"website_url" gorm:"size:500"`
 
 	Region   Region             `json:"region" gorm:"foreignKey:RegionID"`
 	Programs []EducationProgram `json:"programs" gorm:"foreignKey:UniversityID"`

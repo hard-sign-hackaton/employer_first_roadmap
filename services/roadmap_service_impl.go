@@ -271,8 +271,13 @@ func roadmapResponse(roadmap models.Roadmap) dto.RoadmapResponse {
 		employerApplication = &response
 	}
 	return dto.RoadmapResponse{
-		ID:                  roadmap.ID,
-		GoalID:              roadmap.UserGoalID,
+		ID:     roadmap.ID,
+		GoalID: roadmap.UserGoalID,
+		Goal: dto.RoadmapGoalResponse{
+			CompanyName:         roadmap.UserGoal.CareerDirection.Company.Name,
+			CareerDirectionName: roadmap.UserGoal.CareerDirection.Name,
+			TargetAdmissionYear: roadmap.UserGoal.TargetAdmissionYear,
+		},
 		Status:              roadmap.Status,
 		Steps:               steps,
 		NextAction:          nextAction,

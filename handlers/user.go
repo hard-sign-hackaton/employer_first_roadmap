@@ -10,9 +10,26 @@ import (
 )
 
 func CreateUser(ctx maxbot.Context) error {
-	userID := ctx.Update().UserID
-	utils.UpdateUserStateStorage(userID, UserStateStart)
+	return StartBot(ctx)
+}
+
+// StartBot показывает вводную справку и открывает стартовое меню. Его вызывают
+// первый вход в бот, а также команды /start и /restart.
+func StartBot(ctx maxbot.Context) error {
+	utils.UpdateUserStateStorage(ctx.Update().UserID, UserStateStart)
+	if err := ctx.Send(welcomeMessage()); err != nil {
+		return err
+	}
 	return CallMenu(ctx)
+}
+
+func welcomeMessage() string {
+	return "Добро пожаловать!\n\n" +
+		"Бот помогает построить путь к работе в интересующей компании: выбрать направление, спланировать ЕГЭ, подобрать вузы и не потерять следующий шаг на всём пути до практики или стажировки.\n\n" +
+		"Команды:\n" +
+		"/start — открыть стартовое меню;\n" +
+		"/roadmap — показать текущую цель, прогресс и продолжить roadmap;\n" +
+		"/restart — начать сценарий заново."
 }
 
 // RestartScenario полностью очищает персональный сценарий и возвращает к первому вопросу.
@@ -22,8 +39,7 @@ func RestartScenario(ctx maxbot.Context) error {
 		return ctx.Send("Не удалось очистить сценарий. Попробуйте /restart ещё раз.")
 	}
 	utils.ResetSmallSurvey(userID)
-	utils.UpdateUserStateStorage(userID, UserStateStart)
-	return CallMenu(ctx)
+	return StartBot(ctx)
 }
 
 func CallMenu(ctx maxbot.Context) error {

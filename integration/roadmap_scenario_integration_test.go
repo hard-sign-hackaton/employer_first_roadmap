@@ -454,6 +454,9 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 	if err != nil || roadmapAfterEnrollment.EnrollmentChoice == nil || roadmapAfterEnrollment.EnrollmentChoice.AdmissionApplicationID == nil || *roadmapAfterEnrollment.EnrollmentChoice.AdmissionApplicationID != applicationID {
 		t.Fatalf("roadmap must retain final enrollment choice: %v; choice=%#v", err, roadmapAfterEnrollment.EnrollmentChoice)
 	}
+	if roadmapAfterEnrollment.Goal.CompanyName == "" || roadmapAfterEnrollment.Goal.CareerDirectionName == "" {
+		t.Fatalf("roadmap goal summary must contain company and direction: %#v", roadmapAfterEnrollment.Goal)
+	}
 	for index := 0; index < 5; index++ {
 		current, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
 		if err != nil || current.NextAction == nil {

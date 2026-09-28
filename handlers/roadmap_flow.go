@@ -155,6 +155,16 @@ func showCurrentActiveRoadmap(ctx maxbot.Context) error {
 	return showActiveRoadmap(ctx, roadmap)
 }
 
+// OpenCurrentRoadmap открывает активный roadmap по команде /roadmap и переводит
+// диалог в обычный сценарий продолжения с текущего шага.
+func OpenCurrentRoadmap(ctx maxbot.Context) error {
+	roadmap, err := app.Roadmap.GetActiveRoadmap(context.Background(), ctx.Update().UserID)
+	if err != nil {
+		return ctx.Send("Сейчас у вас нет активного roadmap. Пройдите опрос, чтобы сформировать новый путь.")
+	}
+	return showActiveRoadmap(ctx, roadmap)
+}
+
 func showFullCurrentActiveRoadmap(ctx maxbot.Context) error {
 	roadmap, err := app.Roadmap.GetActiveRoadmap(context.Background(), ctx.Update().UserID)
 	if err != nil {
@@ -192,7 +202,7 @@ func sendActiveRoadmap(ctx maxbot.Context, roadmap dto.RoadmapResponse, full boo
 			steps = append(steps, fmt.Sprintf("%s %d. %s", mark, step.OrderNo, step.Title))
 		}
 	}
-	text := fmt.Sprintf("Ваш roadmap: выполнено %d из %d шагов.", completed, len(roadmap.Steps))
+	text := fmt.Sprintf("Текущая цель:\nКомпания: %s\nНаправление: %s\n\nВаш roadmap: выполнено %d из %d шагов.", roadmap.Goal.CompanyName, roadmap.Goal.CareerDirectionName, completed, len(roadmap.Steps))
 	if full {
 		text += "\n\n" + strings.Join(steps, "\n")
 	} else if lastCompleted != "" {

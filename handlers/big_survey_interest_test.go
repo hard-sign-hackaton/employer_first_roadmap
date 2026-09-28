@@ -1,6 +1,21 @@
 package handlers
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestWelcomeMessageExplainsMainCommands(t *testing.T) {
+	message := welcomeMessage()
+	if !strings.HasPrefix(message, "Добро пожаловать!") || strings.Contains(message, "Employer First Roadmap") {
+		t.Fatalf("welcome heading must be neutral: %q", message)
+	}
+	for _, command := range []string{"/start", "/roadmap", "/restart"} {
+		if !strings.Contains(message, command) {
+			t.Fatalf("welcome message must contain %s: %q", command, message)
+		}
+	}
+}
 
 func TestSurveyActivityProfilesUseBroadChoices(t *testing.T) {
 	if len(surveyActivityProfiles) != 5 {

@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	. "efr_bot/models"
 	"efr_bot/utils"
 	"strings"
 
@@ -11,11 +10,13 @@ import (
 func GlobalMessageListener(ctx maxbot.Context) error {
 	userID := ctx.Update().UserID
 	if strings.TrimSpace(ctx.Update().Message.Body.Text) == "/start" {
-		utils.UpdateUserStateStorage(userID, UserStateStart)
-		return CallMenu(ctx)
+		return StartBot(ctx)
 	}
 	if strings.TrimSpace(ctx.Update().Message.Body.Text) == "/restart" {
 		return RestartScenario(ctx)
+	}
+	if strings.TrimSpace(ctx.Update().Message.Body.Text) == "/roadmap" {
+		return OpenCurrentRoadmap(ctx)
 	}
 
 	userState := utils.GetUserState(userID)

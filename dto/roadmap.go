@@ -19,11 +19,19 @@ type RoadmapStepResponse struct {
 type RoadmapResponse struct {
 	ID                  int64                        `json:"id"`
 	GoalID              int64                        `json:"goal_id"`
+	Goal                RoadmapGoalResponse          `json:"goal"`
 	Status              string                       `json:"status"`
 	Steps               []RoadmapStepResponse        `json:"steps"`
 	NextAction          *RoadmapStepResponse         `json:"next_action,omitempty"`
 	EnrollmentChoice    *EnrollmentChoiceResponse    `json:"enrollment_choice,omitempty"`
 	EmployerApplication *EmployerApplicationResponse `json:"employer_application,omitempty"`
+}
+
+// RoadmapGoalResponse — краткая цель, которая показывается при возвращении в roadmap.
+type RoadmapGoalResponse struct {
+	CompanyName         string `json:"company_name"`
+	CareerDirectionName string `json:"career_direction_name"`
+	TargetAdmissionYear int16  `json:"target_admission_year"`
 }
 
 // CreateRoadmapRequest создаёт общий roadmap для уже подтверждённой цели.

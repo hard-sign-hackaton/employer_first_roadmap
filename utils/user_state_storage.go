@@ -37,6 +37,7 @@ type SmallSurveyData struct {
 	ActivityTagIDs                         []int64
 	ActivityTagNames                       []string
 	SelectedActivityTagIDs                 []int64
+	SelectedActivityKey                    string
 	SelectedSchoolSubjectIDs               []int64
 	SelectedSchoolSubjectNames             []string
 	RoadmapID                              int64

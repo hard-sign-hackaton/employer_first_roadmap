@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"efr_bot/dto"
@@ -54,6 +55,120 @@ func testFullSurveyRanksCompaniesBySavedInterests(t *testing.T) {
 
 func TestEleventhGradeFiltersDirectionsBySelectedExamsAndScores(t *testing.T) {
 	runScenario(t, "11 класс: фильтр направлений по ЕГЭ и баллам", testEleventhGradeFiltersDirectionsBySelectedExamsAndScores)
+}
+
+func TestFullSurveyFiltersCatalogByRegionAndReturnsDescriptions(t *testing.T) {
+	runScenario(t, "полный опрос: региональный фильтр и описания карточек", testFullSurveyFiltersCatalogByRegionAndReturnsDescriptions)
+}
+
+func TestCompanyRecommendationDiagnosisExplainsRelocationOrMissingCatalogPath(t *testing.T) {
+	runScenario(t, "полный опрос: диагностика отсутствия полного пути", testCompanyRecommendationDiagnosisExplainsRelocationOrMissingCatalogPath)
+}
+
+func testFullSurveyFiltersCatalogByRegionAndReturnsDescriptions(t *testing.T) {
+	db := openScenarioDatabase(t)
+	tx := beginScenarioTransaction(t, db)
+	profileService, trajectoryService, _ := scenarioServices(tx)
+	ctx := context.Background()
+	userID := scenarioUserID + 12
+	permID := regionIDByName(t, db, "Пермский край")
+	if _, err := profileService.SaveProfile(ctx, userID, dto.UpsertProfileRequest{Grade: 10, RegionID: permID, WillingToRelocate: false}); err != nil {
+		t.Fatalf("save local profile: %v", err)
+	}
+
+	companies, err := trajectoryService.RecommendCompanies(ctx, userID, dto.RecommendCompaniesRequest{Limit: 20})
+	if err != nil {
+		t.Fatalf("recommend local companies: %v", err)
+	}
+	t1 := findRecommendedCompany(t, companies, "Т1")
+	if t1.Description == "" || strings.Contains(t1.Description, "Демонстрационная запись") {
+		t.Fatalf("T1 description = %q, want friendly catalog description", t1.Description)
+	}
+	if t1.WebsiteURL != "https://t1.ru/" {
+		t.Fatalf("T1 website URL = %q, want official URL", t1.WebsiteURL)
+	}
+	if containsRecommendedCompany(companies, "Группа компаний «МЕДСИ»") {
+		t.Fatal("MEDSI must be hidden without relocation: it has no complete path in Perm")
+	}
+
+	directions, err := trajectoryService.GetCareerDirections(ctx, userID, dto.GetCareerDirectionsRequest{CompanyID: t1.ID})
+	if err != nil {
+		t.Fatalf("get local T1 directions: %v", err)
+	}
+	if len(directions) != 1 || directions[0].Name != "Разработчик программного обеспечения" {
+		t.Fatalf("local T1 directions = %#v, want only software developer", directions)
+	}
+	if directions[0].Description == "" || strings.Contains(directions[0].Description, "Демонстрационное") {
+		t.Fatalf("direction description = %q, want friendly description", directions[0].Description)
+	}
+
+	if _, err := profileService.SaveProfile(ctx, userID, dto.UpsertProfileRequest{Grade: 10, RegionID: permID, WillingToRelocate: true}); err != nil {
+		t.Fatalf("allow relocation: %v", err)
+	}
+	companies, err = trajectoryService.RecommendCompanies(ctx, userID, dto.RecommendCompaniesRequest{Limit: 20})
+	if err != nil {
+		t.Fatalf("recommend all-region companies: %v", err)
+	}
+	if !containsRecommendedCompany(companies, "Группа компаний «МЕДСИ»") {
+		t.Fatal("MEDSI must be available after allowing relocation")
+	}
+	directions, err = trajectoryService.GetCareerDirections(ctx, userID, dto.GetCareerDirectionsRequest{CompanyID: t1.ID})
+	if err != nil {
+		t.Fatalf("get all-region T1 directions: %v", err)
+	}
+	if len(directions) < 2 {
+		t.Fatalf("all-region T1 directions = %#v, want remote directions too", directions)
+	}
+}
+
+func testCompanyRecommendationDiagnosisExplainsRelocationOrMissingCatalogPath(t *testing.T) {
+	db := openScenarioDatabase(t)
+	tx := beginScenarioTransaction(t, db)
+	profileService, trajectoryService, _ := scenarioServices(tx)
+	ctx := context.Background()
+	userID := scenarioUserID + 13
+	spbID := regionIDByName(t, db, "Санкт-Петербург")
+	if _, err := profileService.SaveProfile(ctx, userID, dto.UpsertProfileRequest{Grade: 9, RegionID: spbID, WillingToRelocate: false}); err != nil {
+		t.Fatalf("save local profile: %v", err)
+	}
+	diagnosis, err := trajectoryService.DiagnoseCompanyRecommendations(ctx, userID)
+	if err != nil {
+		t.Fatalf("diagnose local recommendations: %v", err)
+	}
+	if diagnosis.Issue != dto.CompanyRecommendationIssueRelocationRequired {
+		t.Fatalf("local diagnosis = %q, want relocation_required", diagnosis.Issue)
+	}
+
+	if err := tx.Exec("DELETE FROM company_opportunities").Error; err != nil {
+		t.Fatalf("remove opportunities for catalog-path scenario: %v", err)
+	}
+	diagnosis, err = trajectoryService.DiagnoseCompanyRecommendations(ctx, userID)
+	if err != nil {
+		t.Fatalf("diagnose missing catalog path: %v", err)
+	}
+	if diagnosis.Issue != dto.CompanyRecommendationIssueNoCatalogPath {
+		t.Fatalf("catalog diagnosis = %q, want no_catalog_path", diagnosis.Issue)
+	}
+}
+
+func containsRecommendedCompany(companies []dto.RecommendedCompanyResponse, name string) bool {
+	for _, company := range companies {
+		if company.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func findRecommendedCompany(t *testing.T, companies []dto.RecommendedCompanyResponse, name string) dto.RecommendedCompanyResponse {
+	t.Helper()
+	for _, company := range companies {
+		if company.Name == name {
+			return company
+		}
+	}
+	t.Fatalf("recommended company %q was not returned", name)
+	return dto.RecommendedCompanyResponse{}
 }
 
 func testEleventhGradeFiltersDirectionsBySelectedExamsAndScores(t *testing.T) {

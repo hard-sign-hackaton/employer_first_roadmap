@@ -140,6 +140,23 @@ func (s *roadmapService) ReconsiderTrajectory(ctx context.Context, userID int64,
 	return roadmapResponse(newRoadmap), nil
 }
 
+func (s *roadmapService) ArchiveRoadmapForRevision(ctx context.Context, userID int64, request dto.GetRoadmapRequest) error {
+	if request.RoadmapID <= 0 {
+		return fmt.Errorf("roadmap_id must be positive")
+	}
+	roadmap, err := s.roadmaps.FindRoadmapByID(ctx, userID, request.RoadmapID)
+	if err != nil {
+		return fmt.Errorf("find roadmap for revision: %w", err)
+	}
+	if roadmap.Status != models.RoadmapStatusActive {
+		return fmt.Errorf("only an active roadmap can be revised")
+	}
+	if _, err := s.roadmaps.ArchiveRoadmap(ctx, roadmap.ID); err != nil {
+		return fmt.Errorf("archive roadmap for revision: %w", err)
+	}
+	return nil
+}
+
 func (s *roadmapService) GetEmployerOpportunity(ctx context.Context, userID int64, request dto.GetRoadmapRequest) (dto.CompanyOpportunityResponse, error) {
 	if request.RoadmapID <= 0 {
 		return dto.CompanyOpportunityResponse{}, fmt.Errorf("roadmap_id must be positive")
@@ -165,13 +182,15 @@ func (s *roadmapService) GetEmployerOpportunity(ctx context.Context, userID int6
 		return dto.CompanyOpportunityResponse{}, fmt.Errorf("no employer opportunity is configured for the selected program")
 	}
 	return dto.CompanyOpportunityResponse{
-		ID:           opportunity.ID,
-		Type:         opportunity.Type,
-		Name:         opportunity.Name,
-		Description:  opportunity.Description,
-		URL:          opportunity.URL,
-		MinStudyYear: opportunity.MinStudyYear,
-		IsAvailable:  opportunity.IsActive,
+		ID:                opportunity.ID,
+		CompanyName:       opportunity.Company.Name,
+		Type:              opportunity.Type,
+		Name:              opportunity.Name,
+		Description:       opportunity.Description,
+		URL:               opportunity.URL,
+		CompanyWebsiteURL: opportunity.Company.WebsiteURL,
+		MinStudyYear:      opportunity.MinStudyYear,
+		IsAvailable:       opportunity.IsActive,
 	}, nil
 }
 

@@ -69,7 +69,7 @@ func handleBigSurveyMessage(ctx maxbot.Context) error {
 		return resendExamSubjects(ctx, "Выберите предметы ЕГЭ кнопками ниже и нажмите «Готово».")
 	case models.UserStateBigSurveyWaitingExamScore:
 		if !collectExamScore(s, text) {
-			return resendExamScore(ctx, "Введите число от 0 до 100 или нажмите «Пропустить».")
+			return resendExamScore(ctx, "Выберите один из диапазонов баллов кнопками ниже.")
 		}
 		if s.ExamScoreStep < len(s.SelectedExamIDs) {
 			text, keyboard := examScoreQuestion(s)
@@ -84,7 +84,7 @@ func handleBigSurveyMessage(ctx maxbot.Context) error {
 		if !ok {
 			return resendBigActivities(ctx, "Выберите номер интереса с клавиатуры.")
 		}
-		s.SelectedActivityTagIDs = []int64{s.ActivityTagIDs[index]}
+		s.SelectedActivityKey = s.ActivityTagNames[index]
 		return showFullSurveySchoolSubjects(ctx)
 	case models.UserStateBigSurveyWaitingSubjects:
 		return resendSchoolSubjects(ctx, "Выберите школьные предметы кнопками ниже и нажмите «Готово».")
@@ -107,10 +107,41 @@ func handleBigSurveyMessage(ctx maxbot.Context) error {
 		}
 		s.CareerDirectionID = s.DirectionIDs[index]
 		s.CareerDirectionName = s.DirectionNames[index]
-		if s.Grade == 11 && len(s.SelectedExamIDs) > 0 {
-			return showGoalConfirmation(ctx, models.UserStateBigSurveyWaitingGoalConfirmation)
+		return continueBigTrajectoryAfterDirection(ctx)
+	case models.UserStateBigSurveyWaitingPathResolution:
+		switch text {
+		case "Рассмотреть другие регионы":
+			return showPathRelocationQuestion(ctx, models.UserStateBigSurveyWaitingPathRelocation)
+		case "Изменить направление":
+			return showBigDirections(ctx)
+		case "Сменить работодателя":
+			return showRecommendedCompanies(ctx)
 		}
-		return showBigRecommendedExamSets(ctx)
+		return ctx.Send("Выберите действие с клавиатуры.")
+	case models.UserStateBigSurveyWaitingPathRelocation:
+		if text != "Да" && text != "Нет" {
+			return showPathRelocationQuestion(ctx, models.UserStateBigSurveyWaitingPathRelocation)
+		}
+		if text == "Нет" {
+			return showBigPathResolution(ctx, dto.TrajectoryPathAssessmentResponse{Status: dto.TrajectoryPathStatusRelocationRequired})
+		}
+		if err := saveChangedRelocation(ctx, true); err != nil {
+			return ctx.Send("Не удалось сохранить решение о переезде.")
+		}
+		return continueBigTrajectoryAfterDirection(ctx)
+	case models.UserStateBigSurveyWaitingCompanyPathResolution:
+		switch text {
+		case "Рассмотреть другие регионы":
+			if err := saveChangedRelocation(ctx, true); err != nil {
+				return ctx.Send("Не удалось сохранить решение о переезде.")
+			}
+			return showRecommendedCompanies(ctx)
+		case "Изменить интересы":
+			return showFullSurveyActivities(ctx)
+		case "Начать новый опрос":
+			return CallBigSurvey(ctx)
+		}
+		return ctx.Send("Выберите действие с клавиатуры.")
 	case models.UserStateBigSurveyWaitingExamSet:
 		index, ok := choice(text, len(s.ExamSets))
 		if !ok {
@@ -254,40 +285,19 @@ func resendBigExamSets(ctx maxbot.Context, message string) error {
 func showFullSurveyActivities(ctx maxbot.Context) error {
 	id := ctx.Update().UserID
 	s := utils.GetSmallSurvey(id)
-	tags, err := app.Reference.ListInterestTags(context.Background())
-	if err != nil {
-		return ctx.Send("Не удалось получить список интересов.")
-	}
 	s.ActivityTagIDs = nil
 	s.ActivityTagNames = nil
 	keyboard := model.NewKeyboard()
-	actionTags := map[string]bool{
-		"Программирование":         true,
-		"Аналитика":                true,
-		"Инженерия":                true,
-		"Коммуникация":             true,
-		"Исследования":             true,
-		"Управление продуктом":     true,
-		"Техническая документация": true,
-		"Производство":             true,
-		"Медицина":                 true,
-		"Экология":                 true,
-		"Логистика":                true,
-	}
-	for _, tag := range tags {
-		if !actionTags[tag.Name] {
-			continue
-		}
-		index := len(s.ActivityTagIDs)
-		s.ActivityTagIDs = append(s.ActivityTagIDs, tag.InterestTagID)
-		s.ActivityTagNames = append(s.ActivityTagNames, tag.Name)
-		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, tag.Name))
+	for index, profile := range surveyActivityProfiles {
+		s.ActivityTagIDs = append(s.ActivityTagIDs, int64(index+1))
+		s.ActivityTagNames = append(s.ActivityTagNames, profile.Key)
+		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, profile.Label))
 	}
 	s.ActivityTagIDs = append(s.ActivityTagIDs, 0)
-	s.ActivityTagNames = append(s.ActivityTagNames, "Другое")
-	keyboard.AddRow().AddMessage(fmt.Sprintf("%d. Другое", len(s.ActivityTagIDs)))
+	s.ActivityTagNames = append(s.ActivityTagNames, "unknown")
+	keyboard.AddRow().AddMessage(fmt.Sprintf("%d. Пока не знаю", len(s.ActivityTagIDs)))
 	utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingInterest)
-	return ctx.Send("Что вам интереснее всего делать? Выберите один вариант:", maxbot.WithKeyboard(keyboard))
+	return ctx.Send("Что вам интереснее всего делать? Это поможет подобрать направления, но не ограничит ваш выбор. Выберите один вариант:", maxbot.WithKeyboard(keyboard))
 }
 
 func showFullSurveySchoolSubjects(ctx maxbot.Context) error {
@@ -300,6 +310,9 @@ func showFullSurveySchoolSubjects(ctx maxbot.Context) error {
 	s.AvailableExamIDs = nil
 	s.AvailableExamNames = nil
 	for _, subject := range subjects {
+		if subject.Name == "Математика (профильная)" {
+			continue
+		}
 		s.AvailableExamIDs = append(s.AvailableExamIDs, subject.ID)
 		s.AvailableExamNames = append(s.AvailableExamNames, subject.Name)
 	}
@@ -322,7 +335,7 @@ func schoolSubjectsQuestion(s *utils.SmallSurveyData) (string, *model.Keyboard) 
 	}
 	keyboard.AddRow().AddCallBack("Готово", subjectsDoneCallback)
 
-	text := "Какие школьные предметы вам интересны? Нажимайте на предметы — выбранные помечаются галочкой. Когда закончите, нажмите «Готово»."
+	text := "Какие школьные предметы вам нравятся? Можно выбрать несколько."
 	if len(s.SelectedSchoolSubjectNames) > 0 {
 		text += "\n\nВыбрано: " + strings.Join(s.SelectedSchoolSubjectNames, ", ")
 	}
@@ -528,12 +541,6 @@ func ExamSubjectsDone(ctx maxbot.Context) error {
 func saveFullSurveyInterests(ctx maxbot.Context) error {
 	id := ctx.Update().UserID
 	s := utils.GetSmallSurvey(id)
-	weights := make(map[int64]float64)
-	for _, tagID := range s.SelectedActivityTagIDs {
-		if tagID > 0 {
-			weights[tagID] += 2
-		}
-	}
 	tags, err := app.Reference.ListInterestTags(context.Background())
 	if err != nil {
 		return err
@@ -542,9 +549,19 @@ func saveFullSurveyInterests(ctx maxbot.Context) error {
 	for _, tag := range tags {
 		byName[tag.Name] = tag.InterestTagID
 	}
+	weights := make(map[int64]float64)
+	if profile, ok := surveyActivityProfileByKey(s.SelectedActivityKey); ok {
+		for tagName, weight := range profile.TagWeights {
+			if tagID := byName[tagName]; tagID > 0 {
+				weights[tagID] += weight
+			}
+		}
+	}
 	for _, subject := range s.SelectedSchoolSubjectNames {
-		if tagName := schoolSubjectTag(subject); tagName != "" {
-			weights[byName[tagName]]++
+		for tagName, weight := range schoolSubjectWeights(subject) {
+			if tagID := byName[tagName]; tagID > 0 {
+				weights[tagID] += weight
+			}
 		}
 	}
 	inputs := make([]dto.InterestInput, 0, len(weights))
@@ -557,28 +574,57 @@ func saveFullSurveyInterests(ctx maxbot.Context) error {
 	return err
 }
 
-func schoolSubjectTag(subject string) string {
+type surveyActivityProfile struct {
+	Key        string
+	Label      string
+	TagWeights map[string]float64
+}
+
+var surveyActivityProfiles = []surveyActivityProfile{
+	{Key: "technology", Label: "Создавать технологии и работать с техникой", TagWeights: map[string]float64{"Программирование": 2, "Инженерия": 1.8, "Производство": 1, "Математика": .8, "Физика": .8}},
+	{Key: "research", Label: "Исследовать и находить закономерности", TagWeights: map[string]float64{"Исследования": 2, "Аналитика": 1.4, "Математика": 1, "Физика": .8, "Химия": .8, "Биология": .8, "Экология": .8}},
+	{Key: "people", Label: "Помогать людям и общаться", TagWeights: map[string]float64{"Коммуникация": 2, "Медицина": 1.4, "Английский язык": .6}},
+	{Key: "projects", Label: "Организовывать и развивать проекты", TagWeights: map[string]float64{"Управление продуктом": 2, "Аналитика": 1.3, "Логистика": 1.3, "Коммуникация": .8}},
+	{Key: "creative", Label: "Придумывать, писать и создавать визуальное", TagWeights: map[string]float64{"Дизайн": 2, "Техническая документация": 1.5, "Коммуникация": 1.2, "Английский язык": .8}},
+}
+
+func surveyActivityProfileByKey(key string) (surveyActivityProfile, bool) {
+	for _, profile := range surveyActivityProfiles {
+		if profile.Key == key {
+			return profile, true
+		}
+	}
+	return surveyActivityProfile{}, false
+}
+
+// schoolSubjectWeights добавляет предметы только как слабый сигнал интереса.
+// Эти веса никогда не участвуют в подборе или проверке комбинаций ЕГЭ.
+func schoolSubjectWeights(subject string) map[string]float64 {
 	switch subject {
-	case "Математика (профильная)":
-		return "Математика"
+	case "Русский язык":
+		return map[string]float64{"Коммуникация": .4, "Техническая документация": .2}
+	case "Математика":
+		return map[string]float64{"Математика": .4, "Аналитика": .2}
 	case "Информатика":
-		return "Программирование"
+		return map[string]float64{"Программирование": .4, "Аналитика": .15}
 	case "Физика":
-		return "Физика"
+		return map[string]float64{"Физика": .4, "Инженерия": .2}
 	case "Обществознание":
-		return "Коммуникация"
+		return map[string]float64{"Коммуникация": .4, "Управление продуктом": .15}
 	case "Английский язык":
-		return "Английский язык"
+		return map[string]float64{"Английский язык": .4, "Коммуникация": .15}
 	case "Химия":
-		return "Химия"
+		return map[string]float64{"Химия": .4, "Исследования": .15}
 	case "Биология":
-		return "Биология"
+		return map[string]float64{"Биология": .4, "Медицина": .2}
 	case "География":
-		return "Экология"
-	case "История", "Литература":
-		return "Коммуникация"
+		return map[string]float64{"Экология": .4, "Логистика": .15}
+	case "История":
+		return map[string]float64{"Коммуникация": .35, "Исследования": .15}
+	case "Литература":
+		return map[string]float64{"Коммуникация": .35, "Техническая документация": .2}
 	default:
-		return ""
+		return nil
 	}
 }
 
@@ -596,7 +642,22 @@ func showRecommendedCompanies(ctx maxbot.Context) error {
 			keyboard.AddRow().AddMessage("Да").AddMessage("Нет")
 			return ctx.Send("С выбранными ЕГЭ подходящих направлений не найдено. Хотите изменить набор ЕГЭ?", maxbot.WithKeyboard(keyboard))
 		}
-		return ctx.Send("Подходящих компаний не найдено. Начните опрос заново командой /start.")
+		diagnosis, diagnosisErr := app.Trajectory.DiagnoseCompanyRecommendations(context.Background(), id)
+		if diagnosisErr != nil {
+			return ctx.Send("Не удалось определить, почему не нашлись компании. Попробуйте позже.")
+		}
+		utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingCompanyPathResolution)
+		keyboard := model.NewKeyboard()
+		switch diagnosis.Issue {
+		case dto.CompanyRecommendationIssueRelocationRequired:
+			keyboard.AddRow().AddMessage("Рассмотреть другие регионы")
+			keyboard.AddRow().AddMessage("Изменить интересы")
+			return ctx.Send("По текущим данным каталога в вашем регионе нет ни одной полной траектории до работодателя: не находится связка направления, ОП/вуза и возможности работодателя. В других регионах такие траектории есть.", maxbot.WithKeyboard(keyboard))
+		default:
+			keyboard.AddRow().AddMessage("Изменить интересы")
+			keyboard.AddRow().AddMessage("Начать новый опрос")
+			return ctx.Send("По текущим данным каталога не найдено ни одной полной траектории: направление → ЕГЭ → ОП/вуз → возможность работодателя. Измените интересы или начните новый опрос.", maxbot.WithKeyboard(keyboard))
+		}
 	}
 	s.CompanyIDs = nil
 	keyboard := model.NewKeyboard()
@@ -605,9 +666,9 @@ func showRecommendedCompanies(ctx maxbot.Context) error {
 		s.CompanyIDs = append(s.CompanyIDs, company.ID)
 		explanation := ""
 		if len(company.Reasons) > 0 {
-			explanation = " — " + company.Reasons[0]
+			explanation = "\nПочему рекомендована: " + company.Reasons[0]
 		}
-		lines = append(lines, fmt.Sprintf("%d. %s%s", index+1, company.Name, explanation))
+		lines = append(lines, fmt.Sprintf("%d. %s\n%s%s", index+1, company.Name, company.Description, explanation))
 		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, company.Name))
 	}
 	utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingCompany)
@@ -622,29 +683,42 @@ func showBigDirections(ctx maxbot.Context) error {
 		return ctx.Send("Не удалось получить направления компании.")
 	}
 	if len(directions) == 0 {
-		return ctx.Send("Для выбранной компании нет направлений, совместимых с выбранными ЕГЭ. Вернитесь к выбору ЕГЭ командой /start.")
+		utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingPathResolution)
+		kb := model.NewKeyboard()
+		kb.AddRow().AddMessage("Сменить работодателя")
+		return ctx.Send("У выбранного работодателя нет направлений с полным путём до возможности работодателя. Выберите другого работодателя.", maxbot.WithKeyboard(kb))
 	}
 	s.DirectionIDs = nil
 	s.DirectionNames = nil
 	keyboard := model.NewKeyboard()
+	lines := make([]string, 0, len(directions))
 	for index, direction := range directions {
 		s.DirectionIDs = append(s.DirectionIDs, direction.ID)
 		s.DirectionNames = append(s.DirectionNames, direction.Name)
+		lines = append(lines, fmt.Sprintf("%d. %s — %s", index+1, direction.Name, direction.Description))
 		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, direction.Name))
 	}
 	utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingDirection)
-	return ctx.Send("Выберите карьерное направление:", maxbot.WithKeyboard(keyboard))
+	prefix := fmt.Sprintf("В компании «%s» вам подходят следующие карьерные направления.", s.CompanyName)
+	if s.Grade == 11 && len(s.SelectedExamIDs) > 0 {
+		prefix = fmt.Sprintf("По вашим выбранным ЕГЭ и указанным баллам в компании «%s» вам подходят следующие направления.", s.CompanyName)
+	}
+	return ctx.Send(prefix+"\n\nВыберите карьерное направление:\n\n"+strings.Join(lines, "\n\n"), maxbot.WithKeyboard(keyboard))
 }
 
 func showBigRecommendedExamSets(ctx maxbot.Context) error {
 	id := ctx.Update().UserID
 	s := utils.GetSmallSurvey(id)
-	sets, err := app.Trajectory.GetRecommendedExamSets(context.Background(), dto.GetRecommendedExamSetsRequest{CareerDirectionID: s.CareerDirectionID})
+	assessment, err := assessCurrentTrajectoryPath(ctx)
 	if err != nil {
 		return ctx.Send("Не удалось подобрать наборы ЕГЭ.")
 	}
+	if assessment.Status != dto.TrajectoryPathStatusAvailable {
+		return showBigPathResolution(ctx, assessment)
+	}
+	sets := assessment.ExamSets
 	if len(sets) == 0 {
-		return ctx.Send("Для направления пока нет опубликованных наборов ЕГЭ. Выберите другое направление.")
+		return showBigPathResolution(ctx, dto.TrajectoryPathAssessmentResponse{Status: dto.TrajectoryPathStatusUnavailable})
 	}
 	s.ExamSets = nil
 	s.ExamSetNames = nil
@@ -665,6 +739,25 @@ func showBigRecommendedExamSets(ctx maxbot.Context) error {
 		fmt.Sprintf("Выберите рекомендуемый набор ЕГЭ. Используем последние доступные правила приёма — %d год:\n\n%s\n\nВведите номер набора или нажмите кнопку.", sets[0].SourceYear, strings.Join(lines, "\n")),
 		maxbot.WithKeyboard(keyboard),
 	)
+}
+
+func continueBigTrajectoryAfterDirection(ctx maxbot.Context) error {
+	s := utils.GetSmallSurvey(ctx.Update().UserID)
+	if (s.Grade != 11 || len(s.SelectedExamIDs) == 0) && len(s.ActualExamIDs) == 0 {
+		return showBigRecommendedExamSets(ctx)
+	}
+	assessment, err := assessCurrentTrajectoryPath(ctx)
+	if err != nil {
+		return ctx.Send("Не удалось проверить выбранный набор ЕГЭ.")
+	}
+	if assessment.Status != dto.TrajectoryPathStatusAvailable {
+		return showBigPathResolution(ctx, assessment)
+	}
+	return showGoalConfirmation(ctx, models.UserStateBigSurveyWaitingGoalConfirmation)
+}
+
+func showBigPathResolution(ctx maxbot.Context, assessment dto.TrajectoryPathAssessmentResponse) error {
+	return showPathResolution(ctx, models.UserStateBigSurveyWaitingPathResolution, assessment)
 }
 
 func sendRoadmap(ctx maxbot.Context, roadmap dto.RoadmapResponse) error {

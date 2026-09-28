@@ -205,6 +205,100 @@ func TestEnrollmentLifecycleRestartsOrReachesEmployer(t *testing.T) {
 	runScenario(t, "приёмная кампания: не поступил → новый опрос; поступил → курс → заявка работодателю", testEnrollmentLifecycleRestartsOrReachesEmployer)
 }
 
+func TestTrajectoryPreflightAvoidsCatalogDeadEnds(t *testing.T) {
+	runScenario(t, "предварительная проверка: локальный путь, переезд и отсутствие возможности", testTrajectoryPreflightAvoidsCatalogDeadEnds)
+}
+
+func testTrajectoryPreflightAvoidsCatalogDeadEnds(t *testing.T) {
+	db := openScenarioDatabase(t)
+	tx := beginScenarioTransaction(t, db)
+	profileService, trajectoryService, _ := scenarioServices(tx)
+	ctx := context.Background()
+	permID := regionIDByName(t, db, "Пермский край")
+
+	findDirection := func(companyName, directionName string) dto.CareerDirectionResponse {
+		company := companyByName(t, trajectoryService, ctx, companyName)
+		var direction models.CareerDirection
+		if err := db.Where("company_id = ? AND name = ?", company.ID, directionName).First(&direction).Error; err != nil {
+			t.Fatalf("find direction %q of %q: %v", directionName, companyName, err)
+		}
+		return dto.CareerDirectionResponse{ID: direction.ID, CompanyID: direction.CompanyID, Name: direction.Name}
+	}
+
+	localUserID := scenarioUserID + 40
+	if _, err := profileService.SaveProfile(ctx, localUserID, dto.UpsertProfileRequest{Grade: 10, RegionID: permID, WillingToRelocate: false}); err != nil {
+		t.Fatalf("save local profile: %v", err)
+	}
+	localDirection := findDirection("Т1", "Разработчик программного обеспечения")
+	local, err := trajectoryService.AssessTrajectoryPath(ctx, localUserID, dto.AssessTrajectoryPathRequest{CareerDirectionID: localDirection.ID})
+	if err != nil || local.Status != dto.TrajectoryPathStatusAvailable || len(local.ExamSets) == 0 {
+		t.Fatalf("local preflight = %#v, err=%v", local, err)
+	}
+
+	relocationUserID := scenarioUserID + 41
+	if _, err := profileService.SaveProfile(ctx, relocationUserID, dto.UpsertProfileRequest{Grade: 10, RegionID: permID, WillingToRelocate: false}); err != nil {
+		t.Fatalf("save relocation profile: %v", err)
+	}
+	medicalDirection := findDirection("Группа компаний «МЕДСИ»", "Врач-лечебник")
+	relocation, err := trajectoryService.AssessTrajectoryPath(ctx, relocationUserID, dto.AssessTrajectoryPathRequest{CareerDirectionID: medicalDirection.ID})
+	if err != nil || relocation.Status != dto.TrajectoryPathStatusRelocationRequired || relocation.Issue != dto.TrajectoryPathIssueNoEducationInRegion {
+		t.Fatalf("relocation preflight = %#v, err=%v", relocation, err)
+	}
+
+	yandexBackend := findDirection("Яндекс", "Backend-разработчик")
+	noLocalOpportunity, err := trajectoryService.AssessTrajectoryPath(ctx, relocationUserID, dto.AssessTrajectoryPathRequest{CareerDirectionID: yandexBackend.ID})
+	if err != nil || noLocalOpportunity.Status != dto.TrajectoryPathStatusRelocationRequired || noLocalOpportunity.Issue != dto.TrajectoryPathIssueNoOpportunityInRegion {
+		t.Fatalf("employer opportunity preflight = %#v, err=%v", noLocalOpportunity, err)
+	}
+	if _, err := profileService.SaveProfile(ctx, relocationUserID, dto.UpsertProfileRequest{Grade: 10, RegionID: permID, WillingToRelocate: true}); err != nil {
+		t.Fatalf("allow relocation: %v", err)
+	}
+	relocationAllowed, err := trajectoryService.AssessTrajectoryPath(ctx, relocationUserID, dto.AssessTrajectoryPathRequest{CareerDirectionID: medicalDirection.ID})
+	if err != nil || relocationAllowed.Status != dto.TrajectoryPathStatusAvailable || len(relocationAllowed.ExamSets) == 0 {
+		t.Fatalf("relocation-enabled preflight = %#v, err=%v", relocationAllowed, err)
+	}
+
+	eleventhUserID := scenarioUserID + 43
+	if _, err := profileService.SaveProfile(ctx, eleventhUserID, dto.UpsertProfileRequest{Grade: 11, RegionID: permID, WillingToRelocate: false}); err != nil {
+		t.Fatalf("save eleventh-grade profile: %v", err)
+	}
+	medicalNames := []string{"Русский язык", "Химия", "Биология"}
+	medicalInputs := make([]dto.UserSubjectInput, 0, len(medicalNames))
+	medicalIDs := make([]int64, 0, len(medicalNames))
+	for _, name := range medicalNames {
+		var subject models.ExamSubject
+		if err := db.First(&subject, "name = ?", name).Error; err != nil {
+			t.Fatalf("find medical EGE %q: %v", name, err)
+		}
+		medicalInputs = append(medicalInputs, dto.UserSubjectInput{ExamSubjectID: subject.ID, Status: models.SubjectStatusSelected})
+		medicalIDs = append(medicalIDs, subject.ID)
+	}
+	if _, err := profileService.SaveUserSubjects(ctx, eleventhUserID, dto.SaveUserSubjectsRequest{Subjects: medicalInputs}); err != nil {
+		t.Fatalf("save eleventh-grade EGE: %v", err)
+	}
+	eleventh, err := trajectoryService.AssessTrajectoryPath(ctx, eleventhUserID, dto.AssessTrajectoryPathRequest{CareerDirectionID: medicalDirection.ID, ExamSubjectIDs: medicalIDs})
+	if err != nil || eleventh.Status != dto.TrajectoryPathStatusRelocationRequired {
+		t.Fatalf("eleventh-grade relocation preflight = %#v, err=%v", eleventh, err)
+	}
+	if _, err := profileService.SaveProfile(ctx, eleventhUserID, dto.UpsertProfileRequest{Grade: 11, RegionID: permID, WillingToRelocate: true}); err != nil {
+		t.Fatalf("allow eleventh-grade relocation: %v", err)
+	}
+	eleventhAllowed, err := trajectoryService.AssessTrajectoryPath(ctx, eleventhUserID, dto.AssessTrajectoryPathRequest{CareerDirectionID: medicalDirection.ID, ExamSubjectIDs: medicalIDs})
+	if err != nil || eleventhAllowed.Status != dto.TrajectoryPathStatusAvailable {
+		t.Fatalf("eleventh-grade relocation-enabled preflight = %#v, err=%v", eleventhAllowed, err)
+	}
+
+	deadEndUserID := scenarioUserID + 42
+	if _, err := profileService.SaveProfile(ctx, deadEndUserID, dto.UpsertProfileRequest{Grade: 10, RegionID: permID, WillingToRelocate: true}); err != nil {
+		t.Fatalf("save dead-end profile: %v", err)
+	}
+	deadEndDirection := findDirection("ПАО «КАМАЗ»", "Инженер по автоматизации")
+	deadEnd, err := trajectoryService.AssessTrajectoryPath(ctx, deadEndUserID, dto.AssessTrajectoryPathRequest{CareerDirectionID: deadEndDirection.ID})
+	if err != nil || deadEnd.Status != dto.TrajectoryPathStatusUnavailable {
+		t.Fatalf("dead-end preflight = %#v, err=%v", deadEnd, err)
+	}
+}
+
 func testEnrollmentLifecycleRestartsOrReachesEmployer(t *testing.T) {
 	db := openScenarioDatabase(t)
 	tx := beginScenarioTransaction(t, db)
@@ -316,6 +410,9 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 		t.Fatalf("education options = %d, want at least two programs for admission-plan test", len(options))
 	}
 	option := options[0]
+	if option.UniversityWebsiteURL == "" {
+		t.Fatal("education option must include a university website URL")
+	}
 	if option.AdmissionYear != 2026 || option.RulesSourceYear != 2026 {
 		t.Fatalf("education option years = admission %d / rules %d, want 2026 / 2026", option.AdmissionYear, option.RulesSourceYear)
 	}
@@ -340,6 +437,11 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 	savedPlan, err := admissionService.GetAdmissionPlan(ctx, userID, dto.GetAdmissionPlanRequest{RoadmapID: roadmap.ID})
 	if err != nil || len(savedPlan) != 2 {
 		t.Fatalf("get saved admission plan: %v; applications=%d", err, len(savedPlan))
+	}
+	for _, application := range savedPlan {
+		if application.UniversityName == "" || application.UniversityWebsiteURL == "" {
+			t.Fatalf("admission application must contain university and website: %#v", application)
+		}
 	}
 	if _, err := roadmapService.GetEmployerOpportunity(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID}); err == nil {
 		t.Fatal("employer opportunity must not be available before final enrollment choice")
@@ -376,6 +478,12 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 	if err != nil || !opportunity.IsAvailable || opportunity.Name == "" {
 		t.Fatalf("get employer opportunity: %v; opportunity=%#v", err, opportunity)
 	}
+	if opportunity.CompanyWebsiteURL == "" {
+		t.Fatal("employer opportunity must include the company website URL")
+	}
+	if opportunity.CompanyName == "" {
+		t.Fatal("employer opportunity must include the company name")
+	}
 	for index := 0; index < 2; index++ {
 		current, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
 		if err != nil || current.NextAction == nil {
@@ -392,6 +500,16 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 	finalRoadmap, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
 	if err != nil || finalRoadmap.EmployerApplication == nil || finalRoadmap.EmployerApplication.Status != "submitted" {
 		t.Fatalf("employer application must persist in roadmap: %v; roadmap=%#v", err, finalRoadmap)
+	}
+	if finalRoadmap.NextAction == nil {
+		t.Fatal("employer application step must still be completed explicitly")
+	}
+	if _, err := roadmapService.UpdateRoadmapStep(ctx, userID, dto.GetRoadmapStepRequest{RoadmapID: roadmap.ID, StepID: finalRoadmap.NextAction.ID}, dto.UpdateRoadmapStepRequest{Status: models.RoadmapStepStatusCompleted}); err != nil {
+		t.Fatalf("complete employer application step: %v", err)
+	}
+	completedRoadmap, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
+	if err != nil || completedRoadmap.Status != models.RoadmapStatusCompleted || completedRoadmap.NextAction != nil {
+		t.Fatalf("roadmap must be completed after employer application: %v; roadmap=%#v", err, completedRoadmap)
 	}
 }
 

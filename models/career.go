@@ -7,6 +7,7 @@ type Company struct {
 	ID          int64  `json:"id" gorm:"primaryKey;autoIncrement"`
 	Name        string `json:"name" gorm:"size:200;not null;unique"`
 	Description string `json:"description"`
+	WebsiteURL  string `json:"website_url" gorm:"size:500"`
 
 	CareerDirections []CareerDirection    `json:"career_directions" gorm:"foreignKey:CompanyID"`
 	Opportunities    []CompanyOpportunity `json:"opportunities" gorm:"foreignKey:CompanyID"`

@@ -294,6 +294,7 @@ func (r *GormRoadmapRepository) roadmapDetails(query *gorm.DB) *gorm.DB {
 			return db.Order("order_no ASC")
 		}).
 		Preload("Steps.CompanyOpportunity").
+		Preload("Steps.CompanyOpportunity.Company").
 		Preload("AdmissionApplications.EducationProgram.University").
 		Preload("EnrollmentChoice.AdmissionApplication.EducationProgram.University").
 		Preload("EmployerApplication.CompanyOpportunity")

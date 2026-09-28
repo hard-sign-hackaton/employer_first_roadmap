@@ -290,6 +290,7 @@ func (s *admissionService) educationOptions(ctx context.Context, userID int64, r
 			response: dto.EducationOptionResponse{
 				UniversityID:           program.UniversityID,
 				UniversityName:         program.University.Name,
+				UniversityWebsiteURL:   program.University.WebsiteURL,
 				UniversityRegion:       program.University.Region.Name,
 				EducationProgramID:     program.ID,
 				ProgramCode:            program.Code,
@@ -493,12 +494,13 @@ func admissionApplicationResponses(applications []models.RoadmapAdmissionApplica
 	result := make([]dto.AdmissionApplicationResponse, 0, len(applications))
 	for _, application := range applications {
 		result = append(result, dto.AdmissionApplicationResponse{
-			ID:                 application.ID,
-			UniversityID:       application.EducationProgram.UniversityID,
-			UniversityName:     application.EducationProgram.University.Name,
-			EducationProgramID: application.EducationProgramID,
-			ProgramName:        application.EducationProgram.Name,
-			Status:             application.Status,
+			ID:                   application.ID,
+			UniversityID:         application.EducationProgram.UniversityID,
+			UniversityName:       application.EducationProgram.University.Name,
+			UniversityWebsiteURL: application.EducationProgram.University.WebsiteURL,
+			EducationProgramID:   application.EducationProgramID,
+			ProgramName:          application.EducationProgram.Name,
+			Status:               application.Status,
 		})
 	}
 	return result

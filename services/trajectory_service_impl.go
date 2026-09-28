@@ -95,6 +95,14 @@ func (s *trajectoryService) RecommendCompanies(ctx context.Context, userID int64
 			}
 			directions = compatibleDirections
 		}
+		viableDirections, viabilityErr := s.filterDirectionsByPath(ctx, userID, directions)
+		if viabilityErr != nil {
+			return nil, fmt.Errorf("check company %d path availability: %w", company.ID, viabilityErr)
+		}
+		if len(viableDirections) == 0 {
+			continue
+		}
+		directions = viableDirections
 		score, reasons := bestDirectionScore(directions, userWeights)
 		if profile.Grade == 11 && len(selectedSubjects) > 0 {
 			reasons = append(reasons, "Есть направление, совместимое с выбранными ЕГЭ")
@@ -121,6 +129,29 @@ func (s *trajectoryService) RecommendCompanies(ctx context.Context, userID int64
 		result = result[:request.Limit]
 	}
 	return result, nil
+}
+
+func (s *trajectoryService) DiagnoseCompanyRecommendations(ctx context.Context, userID int64) (dto.CompanyRecommendationDiagnosisResponse, error) {
+	profile, err := s.profiles.FindProfileByUserID(ctx, userID)
+	if err != nil {
+		return dto.CompanyRecommendationDiagnosisResponse{}, fmt.Errorf("find user profile: %w", err)
+	}
+	companies, err := s.careers.ListCompaniesWithDirectionsAndTags(ctx, 0)
+	if err != nil {
+		return dto.CompanyRecommendationDiagnosisResponse{}, fmt.Errorf("list companies for recommendation diagnosis: %w", err)
+	}
+	for _, company := range companies {
+		for _, direction := range company.CareerDirections {
+			assessment, assessErr := s.AssessTrajectoryPath(ctx, userID, dto.AssessTrajectoryPathRequest{CareerDirectionID: direction.ID})
+			if assessErr != nil {
+				return dto.CompanyRecommendationDiagnosisResponse{}, fmt.Errorf("assess direction %d: %w", direction.ID, assessErr)
+			}
+			if !profile.WillingToRelocate && assessment.Status == dto.TrajectoryPathStatusRelocationRequired {
+				return dto.CompanyRecommendationDiagnosisResponse{Issue: dto.CompanyRecommendationIssueRelocationRequired}, nil
+			}
+		}
+	}
+	return dto.CompanyRecommendationDiagnosisResponse{Issue: dto.CompanyRecommendationIssueNoCatalogPath}, nil
 }
 
 func (s *trajectoryService) SelectCompany(ctx context.Context, _ int64, request dto.SelectCompanyRequest) (dto.CompanyCatalogItemResponse, error) {
@@ -169,6 +200,11 @@ func (s *trajectoryService) GetCareerDirections(ctx context.Context, userID int6
 			directions = compatibleDirections
 		}
 	}
+	viableDirections, viabilityErr := s.filterDirectionsByPath(ctx, userID, directions)
+	if viabilityErr != nil {
+		return nil, fmt.Errorf("check company directions path availability: %w", viabilityErr)
+	}
+	directions = viableDirections
 
 	userWeights := interestWeights(interests)
 	result := make([]dto.CareerDirectionResponse, 0, len(directions))
@@ -251,6 +287,117 @@ func (s *trajectoryService) GetRecommendedExamSets(ctx context.Context, request 
 			Description:    set.description,
 			SourceYear:     set.sourceYear,
 		})
+	}
+	return result, nil
+}
+
+// AssessTrajectoryPath выполняет раннюю проверку маршрута до работодателя.
+// Она использует те же связи ОП и возможности работодателя, что и подбор вуза
+// после фактических результатов ЕГЭ.
+func (s *trajectoryService) AssessTrajectoryPath(ctx context.Context, userID int64, request dto.AssessTrajectoryPathRequest) (dto.TrajectoryPathAssessmentResponse, error) {
+	if request.CareerDirectionID <= 0 {
+		return dto.TrajectoryPathAssessmentResponse{}, fmt.Errorf("career_direction_id must be positive")
+	}
+	direction, err := s.careers.FindCareerDirectionByID(ctx, request.CareerDirectionID)
+	if err != nil {
+		return dto.TrajectoryPathAssessmentResponse{}, fmt.Errorf("find career direction: %w", err)
+	}
+	profile, err := s.profiles.FindProfileByUserID(ctx, userID)
+	if err != nil {
+		return dto.TrajectoryPathAssessmentResponse{}, fmt.Errorf("find user profile: %w", err)
+	}
+
+	sets := make([]dto.RecommendedExamSetResponse, 0)
+	if len(request.ExamSubjectIDs) == 0 {
+		if profile.Grade == 11 {
+			selectedSubjects, subjectsErr := s.selectedSubjects(ctx, userID)
+			if subjectsErr != nil {
+				return dto.TrajectoryPathAssessmentResponse{}, subjectsErr
+			}
+			if len(selectedSubjects) > 0 {
+				ids := make([]int64, 0, len(selectedSubjects))
+				for _, subject := range selectedSubjects {
+					ids = append(ids, subject.ExamSubjectID)
+				}
+				sets = append(sets, dto.RecommendedExamSetResponse{ExamSubjectIDs: ids})
+			}
+		}
+		if len(sets) == 0 {
+			sets, err = s.GetRecommendedExamSets(ctx, dto.GetRecommendedExamSetsRequest{CareerDirectionID: request.CareerDirectionID})
+			if err != nil {
+				return dto.TrajectoryPathAssessmentResponse{}, err
+			}
+		}
+	} else {
+		ids := append([]int64(nil), request.ExamSubjectIDs...)
+		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+		sets = append(sets, dto.RecommendedExamSetResponse{ExamSubjectIDs: ids})
+	}
+
+	availableSets, err := s.pathAvailableExamSets(ctx, direction, profile, sets, profile.WillingToRelocate, true)
+	if err != nil {
+		return dto.TrajectoryPathAssessmentResponse{}, err
+	}
+	if len(availableSets) > 0 {
+		return dto.TrajectoryPathAssessmentResponse{Status: dto.TrajectoryPathStatusAvailable, ExamSets: availableSets}, nil
+	}
+	if !profile.WillingToRelocate {
+		allRegionsSets, allRegionsErr := s.pathAvailableExamSets(ctx, direction, profile, sets, true, true)
+		if allRegionsErr != nil {
+			return dto.TrajectoryPathAssessmentResponse{}, allRegionsErr
+		}
+		if len(allRegionsSets) > 0 {
+			localEducationSets, educationErr := s.pathAvailableExamSets(ctx, direction, profile, sets, false, false)
+			if educationErr != nil {
+				return dto.TrajectoryPathAssessmentResponse{}, educationErr
+			}
+			issue := dto.TrajectoryPathIssueNoEducationInRegion
+			if len(localEducationSets) > 0 {
+				issue = dto.TrajectoryPathIssueNoOpportunityInRegion
+			}
+			return dto.TrajectoryPathAssessmentResponse{Status: dto.TrajectoryPathStatusRelocationRequired, Issue: issue}, nil
+		}
+	}
+	return dto.TrajectoryPathAssessmentResponse{Status: dto.TrajectoryPathStatusUnavailable, Issue: dto.TrajectoryPathIssueNoCatalogPath}, nil
+}
+
+func (s *trajectoryService) pathAvailableExamSets(ctx context.Context, direction models.CareerDirection, profile models.UserProfile, sets []dto.RecommendedExamSetResponse, expandGeography bool, requireEmployerOpportunity bool) ([]dto.RecommendedExamSetResponse, error) {
+	result := make([]dto.RecommendedExamSetResponse, 0, len(sets))
+	for _, set := range sets {
+		if len(set.ExamSubjectIDs) == 0 {
+			continue
+		}
+		programs, err := s.education.ListEducationOptions(ctx, ports.EducationOptionsFilter{
+			CareerDirectionID:          direction.ID,
+			CompanyID:                  direction.CompanyID,
+			ExamSubjectIDs:             set.ExamSubjectIDs,
+			RegionID:                   profile.RegionID,
+			ExpandGeography:            expandGeography,
+			RequireEmployerOpportunity: requireEmployerOpportunity,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list education path options: %w", err)
+		}
+		if len(programs) > 0 {
+			result = append(result, set)
+		}
+	}
+	return result, nil
+}
+
+// filterDirectionsByPath оставляет только направления, которые достижимы с
+// текущими ограничениями профиля: локально без переезда или в любой географии
+// после согласия на переезд.
+func (s *trajectoryService) filterDirectionsByPath(ctx context.Context, userID int64, directions []models.CareerDirection) ([]models.CareerDirection, error) {
+	result := make([]models.CareerDirection, 0, len(directions))
+	for _, direction := range directions {
+		assessment, err := s.AssessTrajectoryPath(ctx, userID, dto.AssessTrajectoryPathRequest{CareerDirectionID: direction.ID})
+		if err != nil {
+			return nil, err
+		}
+		if assessment.Status == dto.TrajectoryPathStatusAvailable {
+			result = append(result, direction)
+		}
 	}
 	return result, nil
 }
@@ -362,6 +509,7 @@ func companyResponse(company models.Company) dto.CompanyCatalogItemResponse {
 		ID:          company.ID,
 		Name:        company.Name,
 		Description: company.Description,
+		WebsiteURL:  company.WebsiteURL,
 	}
 }
 

@@ -4,6 +4,7 @@ package dto
 type EducationOptionResponse struct {
 	UniversityID           int64    `json:"university_id"`
 	UniversityName         string   `json:"university_name"`
+	UniversityWebsiteURL   string   `json:"university_website_url,omitempty"`
 	UniversityRegion       string   `json:"university_region"`
 	EducationProgramID     int64    `json:"education_program_id"`
 	ProgramCode            string   `json:"program_code,omitempty"`
@@ -59,12 +60,13 @@ type AdmissionPlanItemInput struct {
 
 // AdmissionApplicationResponse — сохранённый пункт плана подачи.
 type AdmissionApplicationResponse struct {
-	ID                 int64  `json:"id"`
-	UniversityID       int64  `json:"university_id"`
-	UniversityName     string `json:"university_name"`
-	EducationProgramID int64  `json:"education_program_id"`
-	ProgramName        string `json:"program_name"`
-	Status             string `json:"status"`
+	ID                   int64  `json:"id"`
+	UniversityID         int64  `json:"university_id"`
+	UniversityName       string `json:"university_name"`
+	UniversityWebsiteURL string `json:"university_website_url,omitempty"`
+	EducationProgramID   int64  `json:"education_program_id"`
+	ProgramName          string `json:"program_name"`
+	Status               string `json:"status"`
 }
 
 // SaveEnrollmentChoiceRequest фиксирует единственный итог приёмной кампании.

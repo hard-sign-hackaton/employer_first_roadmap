@@ -6,7 +6,6 @@ import (
 	"efr_bot/models"
 	"efr_bot/utils"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/max-messenger/max-bot-api-client-go/v2/model"
@@ -32,6 +31,11 @@ func showExamSubjectSelection(ctx maxbot.Context, nextState models.UserState) er
 	s.SelectedExamNames = nil
 	s.SelectedExamScores = nil
 	for _, subject := range subjects {
+		if subject.Name == "Русский язык" {
+			s.SelectedExamIDs = append(s.SelectedExamIDs, subject.ID)
+			s.SelectedExamNames = append(s.SelectedExamNames, subject.Name)
+			continue
+		}
 		s.AvailableExamIDs = append(s.AvailableExamIDs, subject.ID)
 		s.AvailableExamNames = append(s.AvailableExamNames, subject.Name)
 	}
@@ -42,28 +46,39 @@ func showExamSubjectSelection(ctx maxbot.Context, nextState models.UserState) er
 
 func examScoreQuestion(s *utils.SmallSurveyData) (string, *model.Keyboard) {
 	name := s.SelectedExamNames[s.ExamScoreStep]
-	text := fmt.Sprintf("Ожидаемый балл по предмету «%s»? Введите число от 0 до 100 или нажмите «Пропустить».", name)
+	text := fmt.Sprintf("Какой ожидаемый результат по предмету «%s»? Выберите диапазон. Для подбора используем его верхнюю границу.", name)
 	keyboard := model.NewKeyboard()
-	keyboard.AddRow().AddMessage("Пропустить")
+	keyboard.AddRow().AddMessage("80–100")
+	keyboard.AddRow().AddMessage("60–79")
+	keyboard.AddRow().AddMessage("0–59")
 	return text, keyboard
 }
 
 func collectExamScore(s *utils.SmallSurveyData, text string) bool {
-	if strings.EqualFold(strings.TrimSpace(text), "Пропустить") {
-		s.ExamScoreStep++
-		return true
-	}
 	if s.ExamScoreStep >= len(s.SelectedExamIDs) {
 		return false
 	}
-	score, err := strconv.ParseInt(strings.TrimSpace(text), 10, 16)
-	if err != nil || score < 0 || score > 100 {
+	score, ok := expectedScoreRangeUpperBound(text)
+	if !ok {
 		return false
 	}
-	value := int16(score)
+	value := score
 	s.SelectedExamScores[s.SelectedExamIDs[s.ExamScoreStep]] = &value
 	s.ExamScoreStep++
 	return true
+}
+
+func expectedScoreRangeUpperBound(text string) (int16, bool) {
+	switch strings.TrimSpace(text) {
+	case "80–100", "80-100":
+		return 100, true
+	case "60–79", "60-79":
+		return 79, true
+	case "0–59", "0-59", "Ниже 60":
+		return 59, true
+	default:
+		return 0, false
+	}
 }
 
 func saveSelectedExamSubjects(ctx maxbot.Context) error {
@@ -87,7 +102,9 @@ func showGoalConfirmation(ctx maxbot.Context, state models.UserState) error {
 	userID := ctx.Update().UserID
 	s := utils.GetSmallSurvey(userID)
 	examNames := s.PlannedExamNames
-	if len(s.SelectedExamNames) > 0 {
+	if len(s.ActualExamNames) > 0 {
+		examNames = s.ActualExamNames
+	} else if len(s.SelectedExamNames) > 0 {
 		examNames = s.SelectedExamNames
 	}
 	utils.UpdateUserStateStorage(userID, state)
@@ -101,4 +118,60 @@ func showGoalConfirmation(ctx maxbot.Context, state models.UserState) error {
 			"Подтвердить цель?",
 		maxbot.WithKeyboard(keyboard),
 	)
+}
+
+func assessCurrentTrajectoryPath(ctx maxbot.Context) (dto.TrajectoryPathAssessmentResponse, error) {
+	s := utils.GetSmallSurvey(ctx.Update().UserID)
+	return assessTrajectoryPath(ctx, s.CareerDirectionID)
+}
+
+func assessTrajectoryPath(ctx maxbot.Context, careerDirectionID int64) (dto.TrajectoryPathAssessmentResponse, error) {
+	id := ctx.Update().UserID
+	s := utils.GetSmallSurvey(id)
+	request := dto.AssessTrajectoryPathRequest{CareerDirectionID: careerDirectionID}
+	if len(s.ActualExamIDs) > 0 {
+		request.ExamSubjectIDs = append([]int64(nil), s.ActualExamIDs...)
+	} else if s.Grade == 11 && len(s.SelectedExamIDs) > 0 {
+		request.ExamSubjectIDs = append([]int64(nil), s.SelectedExamIDs...)
+	}
+	return app.Trajectory.AssessTrajectoryPath(context.Background(), id, request)
+}
+
+func showPathResolution(ctx maxbot.Context, state models.UserState, assessment dto.TrajectoryPathAssessmentResponse) error {
+	utils.UpdateUserStateStorage(ctx.Update().UserID, state)
+	kb := model.NewKeyboard()
+	if assessment.Status == dto.TrajectoryPathStatusRelocationRequired {
+		kb.AddRow().AddMessage("Рассмотреть другие регионы")
+		kb.AddRow().AddMessage("Изменить направление")
+		switch assessment.Issue {
+		case dto.TrajectoryPathIssueNoEducationInRegion:
+			return ctx.Send("Для выбранного направления в вашем регионе нет подходящих вузов и образовательных программ. Рассмотрите обучение в другом регионе или выберите другое направление.", maxbot.WithKeyboard(kb))
+		case dto.TrajectoryPathIssueNoOpportunityInRegion:
+			return ctx.Send("Подходящие вузы и программы в вашем регионе есть, но у работодателя пока нет активной практики, стажировки или проекта в регионе вуза. Рассмотрите обучение в другом регионе или выберите другое направление.", maxbot.WithKeyboard(kb))
+		default:
+			return ctx.Send("Для выбранного направления есть путь до работодателя только при обучении в другом регионе. Рассмотрите обучение в другом регионе или выберите другое направление.", maxbot.WithKeyboard(kb))
+		}
+	}
+	kb.AddRow().AddMessage("Изменить направление")
+	kb.AddRow().AddMessage("Сменить работодателя")
+	return ctx.Send("Для выбранного направления в каталоге нет полного пути: ЕГЭ → образовательная программа → возможность работодателя. Выберите другое направление или работодателя.", maxbot.WithKeyboard(kb))
+}
+
+func showPathRelocationQuestion(ctx maxbot.Context, state models.UserState) error {
+	utils.UpdateUserStateStorage(ctx.Update().UserID, state)
+	kb := model.NewKeyboard()
+	kb.AddRow().AddMessage("Да").AddMessage("Нет")
+	return ctx.Send("Готовы теперь рассмотреть обучение в другом регионе?", maxbot.WithKeyboard(kb))
+}
+
+func saveChangedRelocation(ctx maxbot.Context, willingToRelocate bool) error {
+	id := ctx.Update().UserID
+	s := utils.GetSmallSurvey(id)
+	s.WillingToRelocate = willingToRelocate
+	_, err := app.Profile.SaveProfile(context.Background(), id, dto.UpsertProfileRequest{
+		Grade:             s.Grade,
+		RegionID:          s.RegionID,
+		WillingToRelocate: willingToRelocate,
+	})
+	return err
 }

@@ -31,6 +31,10 @@ type RoadmapService interface {
 	// Вход: dto.GetRoadmapRequest и dto.ReconsiderTrajectoryRequest. Выход: dto.RoadmapResponse новой версии.
 	ReconsiderTrajectory(ctx context.Context, userID int64, roadmap dto.GetRoadmapRequest, request dto.ReconsiderTrajectoryRequest) (dto.RoadmapResponse, error)
 
+	// ArchiveRoadmapForRevision сохраняет незавершённый roadmap в истории перед
+	// выбором другой траектории. Профиль и результаты ЕГЭ пользователя не удаляются.
+	ArchiveRoadmapForRevision(ctx context.Context, userID int64, request dto.GetRoadmapRequest) error
+
 	// GetEmployerOpportunity возвращает назначенную возможность работодателя после выбора вуза.
 	// Вход: dto.GetRoadmapRequest и идентификатор пользователя. Выход: dto.CompanyOpportunityResponse.
 	GetEmployerOpportunity(ctx context.Context, userID int64, request dto.GetRoadmapRequest) (dto.CompanyOpportunityResponse, error)

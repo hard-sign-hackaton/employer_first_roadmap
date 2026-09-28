@@ -34,12 +34,9 @@ func CallMenu(ctx maxbot.Context) error {
 		return showActiveRoadmap(ctx, roadmap)
 	}
 
-	switch userState {
-	case UserStateStart:
+	if userState == UserStateStart {
 		kb.AddRow().AddCallBack("Да", "/small_survey").AddCallBack("Нет", "/big_survey")
 		return ctx.Send("Вы знаете компанию, в которой хотели бы работать?", maxbot.WithKeyboard(kb))
-	default:
-		return nil
 	}
 
 	return nil

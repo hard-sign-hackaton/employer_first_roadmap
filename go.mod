@@ -18,5 +18,5 @@ require (
 	github.com/jinzhu/now v1.1.5 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/text v0.39.0 // indirect
-	gorm.io/driver/postgres v1.6.3 // indirect
+	gorm.io/driver/postgres v1.6.3
 )

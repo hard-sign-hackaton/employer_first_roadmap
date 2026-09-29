@@ -10,7 +10,7 @@ func TestWelcomeMessageExplainsMainCommands(t *testing.T) {
 	if !strings.HasPrefix(message, "Добро пожаловать!") || strings.Contains(message, "Employer First Roadmap") {
 		t.Fatalf("welcome heading must be neutral: %q", message)
 	}
-	for _, command := range []string{"/start", "/roadmap", "/restart"} {
+	for _, command := range []string{"/start", "/roadmap", "/test_reminder", "/restart"} {
 		if !strings.Contains(message, command) {
 			t.Fatalf("welcome message must contain %s: %q", command, message)
 		}

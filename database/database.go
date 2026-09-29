@@ -59,6 +59,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.RoadmapEnrollmentChoice{},
 		&models.RoadmapEmployerApplication{},
 		&models.EmployerFeedback{},
+		&models.RoadmapReminderDelivery{},
 	)
 }
 

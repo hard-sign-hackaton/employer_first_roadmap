@@ -43,6 +43,7 @@ func TestAutoMigratePostgres(t *testing.T) {
 		&models.Roadmap{},
 		&models.RoadmapStep{},
 		&models.RoadmapAdmissionApplication{},
+		&models.RoadmapReminderDelivery{},
 	} {
 		if !db.Migrator().HasTable(model) {
 			t.Errorf("table for %T was not created", model)

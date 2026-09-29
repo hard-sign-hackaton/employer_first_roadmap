@@ -539,7 +539,7 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 		t.Fatalf("list employer applications: %v; applications=%#v", err, employerApplications)
 	}
 	finalRoadmap, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
-	if err != nil || finalRoadmap.EmployerApplication == nil || finalRoadmap.EmployerApplication.Status != "submitted" {
+	if err != nil || finalRoadmap.EmployerApplication == nil || finalRoadmap.EmployerApplication.Status != "interview" {
 		t.Fatalf("employer application must persist in roadmap: %v; roadmap=%#v", err, finalRoadmap)
 	}
 	if finalRoadmap.NextAction == nil {

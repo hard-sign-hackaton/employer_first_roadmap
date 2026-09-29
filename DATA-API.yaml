@@ -1,7 +1,7 @@
 # Evaluator manifest. Adjust schema_version if the organizer provides an
 # official validator schema with a different version.
 schema_version: "1.0"
-solution: "Employer First Roadmap"
+solution: "Хочу работать в ..!"
 base_url: "https://135.106.216.99"
 openapi: "openapi.json"
 test_data: "docs/api-test-data.json"

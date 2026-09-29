@@ -38,8 +38,8 @@ func TestSeedMoscowCatalogIsIdempotentAndDoesNotCreateDemoCatalog(t *testing.T) 
 	if err := db.Order("name").Find(&companies).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(companies) != 7 {
-		t.Fatalf("companies = %d, want 7", len(companies))
+	if len(companies) != 10 {
+		t.Fatalf("companies = %d, want 10", len(companies))
 	}
 	for _, company := range companies {
 		if company.Name == "Т1" || company.Name == "ПАО «КАМАЗ»" {
@@ -62,8 +62,8 @@ func TestSeedMoscowCatalogIsIdempotentAndDoesNotCreateDemoCatalog(t *testing.T) 
 	if err := db.Find(&opportunities).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(opportunities) < 7 {
-		t.Fatalf("opportunities = %d, want at least 7", len(opportunities))
+	if len(opportunities) != 19 {
+		t.Fatalf("opportunities = %d, want 19", len(opportunities))
 	}
 	for _, opportunity := range opportunities {
 		if opportunity.URL == "" || opportunity.SourceCheckedAt == nil || opportunity.WorkFormat == "" {
@@ -84,8 +84,30 @@ func TestSeedMoscowCatalogIsIdempotentAndDoesNotCreateDemoCatalog(t *testing.T) 
 	if err := db.Preload("ExamCombinations.Items.ExamSubject").Preload("AdmissionScores").Find(&programs).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(programs) != 25 {
-		t.Fatalf("programs = %d, want 25", len(programs))
+	if len(programs) != 26 {
+		t.Fatalf("programs = %d, want 26", len(programs))
+	}
+	var infosec models.EducationProgram
+	if err := db.Where("code = ? AND name = ?", "10.03.01", "Информационная безопасность").First(&infosec).Error; err != nil {
+		t.Fatalf("expected verified MEPhI information-security programme: %v", err)
+	}
+	var kasperskyOpportunity models.CompanyOpportunity
+	if err := db.Joins("JOIN companies ON companies.id = company_opportunities.company_id").
+		Where("companies.name = ? AND company_opportunities.active_listing_url = ?", "Лаборатория Касперского", "https://careers.kaspersky.ru/vacancy/25720").
+		First(&kasperskyOpportunity).Error; err != nil {
+		t.Fatalf("expected Kaspersky's active Moscow information-security internship: %v", err)
+	}
+	if kasperskyOpportunity.RegionID == nil || kasperskyOpportunity.WorkFormat != "onsite" {
+		t.Fatalf("Kaspersky opportunity must be Moscow onsite: %+v", kasperskyOpportunity)
+	}
+	var x5RemoteOpportunity models.CompanyOpportunity
+	if err := db.Joins("JOIN companies ON companies.id = company_opportunities.company_id").
+		Where("companies.name = ? AND company_opportunities.work_format = ?", "X5 Group", "remote").
+		First(&x5RemoteOpportunity).Error; err != nil {
+		t.Fatalf("expected verified remote X5 opportunity: %v", err)
+	}
+	if x5RemoteOpportunity.RegionID != nil {
+		t.Fatalf("X5 remote opportunity must not be restricted to Moscow: %+v", x5RemoteOpportunity)
 	}
 	var hse models.EducationProgram
 	if err := db.Where("code = ? AND name = ?", "01.03.02", "Компьютерные науки и анализ данных").Preload("ExamCombinations.Items.ExamSubject").First(&hse).Error; err != nil {

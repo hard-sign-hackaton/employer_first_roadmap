@@ -75,6 +75,9 @@ func seedMoscowCompanies(tx *gorm.DB, tags map[string]models.InterestTag) (map[s
 		{"avito", "Авито", "Онлайн-платформа объявлений и технологическая компания.", "https://www.avito.ru/"},
 		{"rosatom", "Госкорпорация «Росатом»", "Российская государственная корпорация в области атомной энергетики и технологий.", "https://www.rosatom.ru/"},
 		{"rzd", "ОАО «РЖД»", "Российская железнодорожная компания и транспортный холдинг.", "https://www.rzd.ru/"},
+		{"kaspersky", "Лаборатория Касперского", "Компания в области кибербезопасности и защиты информации.", "https://www.kaspersky.ru/"},
+		{"x5", "X5 Group", "Российская розничная компания, развивающая торговые, логистические и цифровые сервисы.", "https://www.x5.ru/ru/"},
+		{"rostelecom", "Ростелеком", "Технологическая компания и поставщик цифровых решений и услуг связи.", "https://www.company.rt.ru/"},
 	}
 	companies := make(map[string]models.Company, len(companyData))
 	for _, item := range companyData {
@@ -99,6 +102,11 @@ func seedMoscowCompanies(tx *gorm.DB, tags map[string]models.InterestTag) (map[s
 		{"rosatom_it", "rosatom", "ИТ-специалист", "Создаёт и сопровождает цифровые решения для отрасли.", map[string]float64{"Программирование": 1, "Инженерия": .6}},
 		{"rzd_transport", "rzd", "Инженер транспортных систем", "Работает с технологиями и инфраструктурой железнодорожного транспорта.", map[string]float64{"Инженерия": 1, "Логистика": .9}},
 		{"rzd_it", "rzd", "Разработчик цифровых транспортных систем", "Создаёт цифровые решения для железнодорожного транспорта.", map[string]float64{"Программирование": 1, "Логистика": .8}},
+		{"kaspersky_security", "kaspersky", "Специалист по информационной безопасности", "Помогает защищать данные, сервисы и цифровую инфраструктуру компании.", map[string]float64{"Программирование": .8, "Исследования": .8, "Математика": .6}},
+		{"x5_dev", "x5", "Разработчик цифровых ритейл-систем", "Создаёт цифровые продукты для торговых и логистических процессов X5.", map[string]float64{"Программирование": 1, "Математика": .7}},
+		{"rostelecom_telecom", "rostelecom", "Инженер связи", "Работает с оборудованием и инфраструктурой сети связи.", map[string]float64{"Инженерия": 1, "Физика": .8}},
+		{"rostelecom_it", "rostelecom", "ИТ-специалист", "Разрабатывает, эксплуатирует и поддерживает информационные системы.", map[string]float64{"Программирование": 1, "Математика": .7}},
+		{"rostelecom_data", "rostelecom", "Аналитик данных", "Создаёт модели для прогноза спроса, продаж и других показателей.", map[string]float64{"Аналитика": 1, "Математика": .9}},
 	}
 	directions := make(map[string]models.CareerDirection, len(directionData))
 	for _, item := range directionData {
@@ -173,6 +181,7 @@ func seedMoscowEducation(tx *gorm.DB, moscowID int64, subjects map[string]models
 		{"sechenov_medicine", unis[7].name, "31.05.01", "Лечебное дело", "Специалитет Сеченовского Университета.", "https://www.sechenov.ru/univers/", []string{"Русский язык", "Химия", "Биология"}},
 		{"mephi_pi", unis[3].name, "09.03.03", "Прикладная информатика", "Программы: интеллектуальные информационно-аналитические системы и мобильные приложения.", "https://admission.mephi.ru/admission/baccalaureate-and-specialty/exams/list", []string{"Русский язык", "Математика (профильная)", "Информатика"}},
 		{"mephi_se", unis[3].name, "09.03.04", "Программная инженерия", "Программы: программная инженерия искусственного интеллекта и интеллектуальные информационные системы.", "https://admission.mephi.ru/admission/baccalaureate-and-specialty/exams/list", []string{"Русский язык", "Математика (профильная)", "Информатика"}},
+		{"mephi_infosec", unis[3].name, "10.03.01", "Информационная безопасность", "Программа подготовки специалистов по информационной безопасности.", "https://admission.mephi.ru/admission/baccalaureate-and-specialty/exams/list", []string{"Русский язык", "Математика (профильная)", "Информатика"}},
 	}
 	checked := time.Date(2026, 9, 29, 0, 0, 0, 0, time.UTC)
 	confirmedMinimums := map[string]map[string]int16{
@@ -182,6 +191,7 @@ func seedMoscowEducation(tx *gorm.DB, moscowID int64, subjects map[string]models
 		"mephi_it":          {"Русский язык": 70, "Математика (профильная)": 75, "Информатика": 75},
 		"mephi_pi":          {"Русский язык": 70, "Математика (профильная)": 75, "Информатика": 75},
 		"mephi_se":          {"Русский язык": 70, "Математика (профильная)": 75, "Информатика": 75},
+		"mephi_infosec":     {"Русский язык": 70, "Математика (профильная)": 75, "Информатика": 75},
 		"rudn_ai":           {"Русский язык": 65, "Математика (профильная)": 65, "Информатика": 65},
 		"misis_pi":          {"Математика (профильная)": 65},
 		"sechenov_medicine": {"Русский язык": 40, "Химия": 40, "Биология": 40},
@@ -233,6 +243,7 @@ func subjectsMap(subjects map[string]models.ExamSubject, name string) int64 { re
 func seedMoscowDirectionPrograms(tx *gorm.DB, directions map[string]models.CareerDirection, programs map[string]models.EducationProgram) error {
 	links := map[string][]string{
 		"yandex_dev": {"hse_pi", "bmstu_it", "mephi_se", "mirea_ai"}, "yandex_data": {"hse_data", "hse_bi", "mephi_it"}, "vk_dev": {"hse_pi", "mephi_se", "mirea_se", "rudn_se"}, "vk_product": {"hse_bi", "rudn_management"}, "sber_data": {"hse_data", "mephi_it", "rudn_ai"}, "sber_dev": {"bmstu_it", "mephi_pi", "misis_pi", "mirea_se"}, "mts_dev": {"bmstu_it", "mephi_se", "mirea_se", "rut_it"}, "mts_telecom": {"mirea_telecom", "bmstu_auto"}, "avito_data": {"hse_data", "hse_bi", "rudn_management"}, "avito_dev": {"hse_pi", "mephi_se", "mirea_se", "rudn_se"}, "rosatom_nuclear": {"mephi_nuclear", "mephi_energy", "bmstu_auto"}, "rosatom_it": {"mephi_it", "mephi_pi", "misis_pi"}, "rzd_transport": {"rut_transport", "bmstu_auto"}, "rzd_it": {"rut_it", "rut_is", "mirea_se"},
+		"kaspersky_security": {"mephi_infosec"}, "x5_dev": {"hse_pi", "mephi_se", "mirea_se", "rudn_se"}, "rostelecom_telecom": {"mirea_telecom", "rut_transport", "bmstu_auto"}, "rostelecom_it": {"rut_it", "rut_is", "mirea_se", "mephi_it"}, "rostelecom_data": {"hse_data", "hse_bi", "rudn_ai"},
 	}
 	for direction, items := range links {
 		for _, program := range items {
@@ -250,20 +261,30 @@ func seedMoscowOpportunities(tx *gorm.DB, moscowID int64, companies map[string]m
 	data := []struct {
 		company, direction, name, portal, listing string
 		course                                    int16
-		kind                                      string
+		kind, format                              string
 	}{
-		{"yandex", "yandex_dev", "Young&&Yandex: стажировка в разработке", "https://yandex.ru/jobs/", "https://yandex.ru/jobs/internship", 2, models.OpportunityTypeInternship}, {"yandex", "yandex_data", "Young&&Yandex: стажировка в аналитике данных", "https://yandex.ru/jobs/", "https://yandex.ru/jobs/internship", 2, models.OpportunityTypeInternship},
-		{"vk", "vk_dev", "Карьера в VK", "https://vk.company/ru/", "", 2, models.OpportunityTypeInternship}, {"vk", "vk_product", "Карьера в VK", "https://vk.company/ru/", "", 2, models.OpportunityTypeInternship},
-		{"sber", "sber_data", "Студенческие программы Сбера", "https://sberstudent.ru/", "", 2, models.OpportunityTypeInternship}, {"sber", "sber_dev", "Студенческие программы Сбера", "https://sberstudent.ru/", "", 2, models.OpportunityTypeInternship},
-		{"mts", "mts_dev", "Карьера в МТС", "https://job.mts.ru/", "", 2, models.OpportunityTypeInternship}, {"mts", "mts_telecom", "Карьера в МТС", "https://job.mts.ru/", "", 2, models.OpportunityTypeInternship},
-		{"avito", "avito_data", "Карьера в Авито", "https://career.avito.com/", "", 2, models.OpportunityTypeInternship}, {"avito", "avito_dev", "Карьера в Авито", "https://career.avito.com/", "", 2, models.OpportunityTypeInternship},
-		{"rosatom", "rosatom_nuclear", "Карьера в Росатоме", "https://rosatom.ru/career/", "", 3, models.OpportunityTypeInternship}, {"rosatom", "rosatom_it", "Карьера в Росатоме", "https://rosatom.ru/career/", "", 2, models.OpportunityTypeInternship},
-		{"rzd", "rzd_transport", "Карьерный портал РЖД", "https://team.rzd.ru/", "", 3, models.OpportunityTypePractice}, {"rzd", "rzd_it", "Карьерный портал РЖД", "https://team.rzd.ru/", "", 2, models.OpportunityTypeInternship},
+		{"yandex", "yandex_dev", "Young&&Yandex: стажировка в разработке", "https://yandex.ru/jobs/", "https://yandex.ru/jobs/internship", 2, models.OpportunityTypeInternship, ""}, {"yandex", "yandex_data", "Young&&Yandex: стажировка в аналитике данных", "https://yandex.ru/jobs/", "https://yandex.ru/jobs/internship", 2, models.OpportunityTypeInternship, ""},
+		{"vk", "vk_dev", "Карьера в VK", "https://vk.company/ru/", "", 2, models.OpportunityTypeInternship, ""}, {"vk", "vk_product", "Карьера в VK", "https://vk.company/ru/", "", 2, models.OpportunityTypeInternship, ""},
+		{"sber", "sber_data", "Студенческие программы Сбера", "https://sberstudent.ru/", "", 2, models.OpportunityTypeInternship, ""}, {"sber", "sber_dev", "Студенческие программы Сбера", "https://sberstudent.ru/", "", 2, models.OpportunityTypeInternship, ""},
+		{"mts", "mts_dev", "Карьера в МТС", "https://job.mts.ru/", "", 2, models.OpportunityTypeInternship, ""}, {"mts", "mts_telecom", "Карьера в МТС", "https://job.mts.ru/", "", 2, models.OpportunityTypeInternship, ""},
+		{"avito", "avito_data", "Карьера в Авито", "https://career.avito.com/", "", 2, models.OpportunityTypeInternship, ""}, {"avito", "avito_dev", "Карьера в Авито", "https://career.avito.com/", "", 2, models.OpportunityTypeInternship, ""},
+		{"rosatom", "rosatom_nuclear", "Карьера в Росатоме", "https://rosatom.ru/career/", "", 3, models.OpportunityTypeInternship, ""}, {"rosatom", "rosatom_it", "Карьера в Росатоме", "https://rosatom.ru/career/", "", 2, models.OpportunityTypeInternship, ""},
+		{"rzd", "rzd_transport", "Карьерный портал РЖД", "https://team.rzd.ru/", "", 3, models.OpportunityTypePractice, ""}, {"rzd", "rzd_it", "Карьерный портал РЖД", "https://team.rzd.ru/", "", 2, models.OpportunityTypeInternship, ""},
+		{"kaspersky", "kaspersky_security", "Стажер по информационной безопасности (ПДн)", "https://safeboard.kaspersky.ru/", "https://careers.kaspersky.ru/vacancy/25720", 1, models.OpportunityTypeInternship, "onsite"},
+		{"x5", "x5_dev", "X5 Tech: оплачиваемая ИТ-стажировка", "https://techcrew.start.x5.ru/", "https://techcrew.start.x5.ru/", 1, models.OpportunityTypeInternship, "remote"},
+		{"rostelecom", "rostelecom_telecom", "Твоя первая: стажировка инженера связи", "https://first.rt.ru/", "https://first.rt.ru/", 3, models.OpportunityTypeInternship, "remote"}, {"rostelecom", "rostelecom_it", "Твоя первая: стажировка в ИТ", "https://first.rt.ru/", "https://first.rt.ru/", 3, models.OpportunityTypeInternship, "remote"}, {"rostelecom", "rostelecom_data", "Твоя первая: стажировка в аналитике", "https://first.rt.ru/", "https://first.rt.ru/", 3, models.OpportunityTypeInternship, "remote"},
 	}
 	for _, item := range data {
 		c, d := companies[item.company], directions[item.direction]
-		regionID := moscowID
-		value := models.CompanyOpportunity{CompanyID: c.ID, CareerDirectionID: d.ID, Type: item.kind, Name: item.name, Description: "Официальный карьерный/студенческий портал; доступность конкретного набора проверяется по ссылке.", URL: item.portal, ActiveListingURL: item.listing, SourceCheckedAt: &checked, WorkFormat: "onsite", MinStudyYear: item.course, RegionID: &regionID, IsActive: true}
+		format := item.format
+		if format == "" {
+			format = "onsite"
+		}
+		var regionID *int64
+		if format != "remote" {
+			regionID = &moscowID
+		}
+		value := models.CompanyOpportunity{CompanyID: c.ID, CareerDirectionID: d.ID, Type: item.kind, Name: item.name, Description: "Официальный карьерный/студенческий портал; доступность конкретного набора проверяется по ссылке.", URL: item.portal, ActiveListingURL: item.listing, SourceCheckedAt: &checked, WorkFormat: format, MinStudyYear: item.course, RegionID: regionID, IsActive: true}
 		if err := tx.Where("company_id = ? AND career_direction_id = ? AND name = ?", value.CompanyID, value.CareerDirectionID, value.Name).Assign(value).FirstOrCreate(&value).Error; err != nil {
 			return err
 		}

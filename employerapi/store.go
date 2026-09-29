@@ -384,13 +384,13 @@ func (s *Store) opportunity(c context.Context, id, companyID int64) (models.Comp
 	return x, e
 }
 func opportunityView(x models.CompanyOpportunity) OpportunityResponse {
-	return OpportunityResponse{ID: x.ID, OpportunityInput: OpportunityInput{CareerDirectionID: x.CareerDirectionID, Type: x.Type, Name: x.Name, Description: x.Description, URL: x.URL, MinStudyYear: x.MinStudyYear, RegionID: x.RegionID, IsActive: x.IsActive}, UpdatedAt: x.UpdatedAt}
+	return OpportunityResponse{ID: x.ID, OpportunityInput: OpportunityInput{CareerDirectionID: x.CareerDirectionID, Type: x.Type, Name: x.Name, Description: x.Description, URL: x.URL, ActiveListingURL: x.ActiveListingURL, SourceCheckedAt: x.SourceCheckedAt, WorkFormat: x.WorkFormat, MinStudyYear: x.MinStudyYear, RegionID: x.RegionID, IsActive: x.IsActive}, UpdatedAt: x.UpdatedAt}
 }
 func (s *Store) SaveOpportunity(c context.Context, companyID, id int64, in OpportunityInput) (OpportunityResponse, error) {
 	if _, e := s.direction(c, in.CareerDirectionID, companyID); e != nil {
 		return OpportunityResponse{}, e
 	}
-	if strings.TrimSpace(in.Name) == "" || in.MinStudyYear < 1 || in.MinStudyYear > 6 {
+	if strings.TrimSpace(in.Name) == "" || in.MinStudyYear < 1 || in.MinStudyYear > 6 || (in.WorkFormat != "" && in.WorkFormat != "onsite" && in.WorkFormat != "hybrid" && in.WorkFormat != "remote") {
 		return OpportunityResponse{}, fmt.Errorf("invalid opportunity")
 	}
 	var x models.CompanyOpportunity
@@ -408,6 +408,12 @@ func (s *Store) SaveOpportunity(c context.Context, companyID, id int64, in Oppor
 	x.Name = strings.TrimSpace(in.Name)
 	x.Description = strings.TrimSpace(in.Description)
 	x.URL = strings.TrimSpace(in.URL)
+	x.ActiveListingURL = strings.TrimSpace(in.ActiveListingURL)
+	x.SourceCheckedAt = in.SourceCheckedAt
+	x.WorkFormat = in.WorkFormat
+	if x.WorkFormat == "" {
+		x.WorkFormat = "onsite"
+	}
 	x.MinStudyYear = in.MinStudyYear
 	x.RegionID = in.RegionID
 	x.IsActive = in.IsActive

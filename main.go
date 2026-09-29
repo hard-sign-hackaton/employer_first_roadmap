@@ -41,6 +41,11 @@ func main() {
 			log.Fatalf("Не удалось заполнить демонстрационные данные: %v", err)
 		}
 	}
+	if database.MoscowCatalogSeedEnabled() {
+		if err := database.SeedMoscowCatalog(db); err != nil {
+			log.Fatalf("Не удалось заполнить московский каталог: %v", err)
+		}
+	}
 
 	sqlDB, err := db.DB()
 	if err != nil {

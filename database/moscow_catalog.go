@@ -171,13 +171,20 @@ func seedMoscowEducation(tx *gorm.DB, moscowID int64, subjects map[string]models
 		{"misis_pi", unis[2].name, "09.03.03", "Прикладная информатика", "ИТ-программа НИТУ МИСИС.", "https://jen.msk.misis.ru/applicants/admission/baccalaureate-and-specialty/list/perechen_vstupitel_nyhispytanii/", []string{"Русский язык", "Математика (профильная)", "Информатика"}},
 		{"mirea_ai", unis[6].name, "09.03.03", "Прикладная информатика", "ОП в области прикладной информатики.", "https://priem.mirea.ru/", []string{"Русский язык", "Математика (профильная)", "Информатика"}},
 		{"sechenov_medicine", unis[7].name, "31.05.01", "Лечебное дело", "Специалитет Сеченовского Университета.", "https://www.sechenov.ru/univers/", []string{"Русский язык", "Химия", "Биология"}},
+		{"mephi_pi", unis[3].name, "09.03.03", "Прикладная информатика", "Программы: интеллектуальные информационно-аналитические системы и мобильные приложения.", "https://admission.mephi.ru/admission/baccalaureate-and-specialty/exams/list", []string{"Русский язык", "Математика (профильная)", "Информатика"}},
+		{"mephi_se", unis[3].name, "09.03.04", "Программная инженерия", "Программы: программная инженерия искусственного интеллекта и интеллектуальные информационные системы.", "https://admission.mephi.ru/admission/baccalaureate-and-specialty/exams/list", []string{"Русский язык", "Математика (профильная)", "Информатика"}},
 	}
 	checked := time.Date(2026, 9, 29, 0, 0, 0, 0, time.UTC)
 	confirmedMinimums := map[string]map[string]int16{
-		"hse_data":     {"Русский язык": 60, "Математика (профильная)": 70, "Информатика": 65},
-		"mephi_energy": {"Русский язык": 70, "Математика (профильная)": 75, "Физика": 75},
-		"rudn_ai":      {"Русский язык": 65, "Математика (профильная)": 65, "Информатика": 65},
-		"misis_pi":     {"Математика (профильная)": 65},
+		"hse_data":          {"Русский язык": 60, "Математика (профильная)": 70, "Информатика": 65},
+		"mephi_energy":      {"Русский язык": 70, "Математика (профильная)": 75, "Физика": 75},
+		"mephi_nuclear":     {"Русский язык": 70, "Математика (профильная)": 75, "Физика": 75},
+		"mephi_it":          {"Русский язык": 70, "Математика (профильная)": 75, "Информатика": 75},
+		"mephi_pi":          {"Русский язык": 70, "Математика (профильная)": 75, "Информатика": 75},
+		"mephi_se":          {"Русский язык": 70, "Математика (профильная)": 75, "Информатика": 75},
+		"rudn_ai":           {"Русский язык": 65, "Математика (профильная)": 65, "Информатика": 65},
+		"misis_pi":          {"Математика (профильная)": 65},
+		"sechenov_medicine": {"Русский язык": 40, "Химия": 40, "Биология": 40},
 	}
 	confirmedPassingScores := map[string]struct {
 		budget int16
@@ -225,7 +232,7 @@ func subjectsMap(subjects map[string]models.ExamSubject, name string) int64 { re
 
 func seedMoscowDirectionPrograms(tx *gorm.DB, directions map[string]models.CareerDirection, programs map[string]models.EducationProgram) error {
 	links := map[string][]string{
-		"yandex_dev": {"hse_pi", "bmstu_it", "mirea_ai"}, "yandex_data": {"hse_data", "hse_bi", "mephi_it"}, "vk_dev": {"hse_pi", "mirea_se", "rudn_se"}, "vk_product": {"hse_bi", "rudn_management"}, "sber_data": {"hse_data", "mephi_it", "rudn_ai"}, "sber_dev": {"bmstu_it", "misis_pi", "mirea_se"}, "mts_dev": {"bmstu_it", "mirea_se", "rut_it"}, "mts_telecom": {"mirea_telecom", "bmstu_auto"}, "avito_data": {"hse_data", "hse_bi", "rudn_management"}, "avito_dev": {"hse_pi", "mirea_se", "rudn_se"}, "rosatom_nuclear": {"mephi_nuclear", "mephi_energy", "bmstu_auto"}, "rosatom_it": {"mephi_it", "misis_pi"}, "rzd_transport": {"rut_transport", "bmstu_auto"}, "rzd_it": {"rut_it", "rut_is", "mirea_se"},
+		"yandex_dev": {"hse_pi", "bmstu_it", "mephi_se", "mirea_ai"}, "yandex_data": {"hse_data", "hse_bi", "mephi_it"}, "vk_dev": {"hse_pi", "mephi_se", "mirea_se", "rudn_se"}, "vk_product": {"hse_bi", "rudn_management"}, "sber_data": {"hse_data", "mephi_it", "rudn_ai"}, "sber_dev": {"bmstu_it", "mephi_pi", "misis_pi", "mirea_se"}, "mts_dev": {"bmstu_it", "mephi_se", "mirea_se", "rut_it"}, "mts_telecom": {"mirea_telecom", "bmstu_auto"}, "avito_data": {"hse_data", "hse_bi", "rudn_management"}, "avito_dev": {"hse_pi", "mephi_se", "mirea_se", "rudn_se"}, "rosatom_nuclear": {"mephi_nuclear", "mephi_energy", "bmstu_auto"}, "rosatom_it": {"mephi_it", "mephi_pi", "misis_pi"}, "rzd_transport": {"rut_transport", "bmstu_auto"}, "rzd_it": {"rut_it", "rut_is", "mirea_se"},
 	}
 	for direction, items := range links {
 		for _, program := range items {

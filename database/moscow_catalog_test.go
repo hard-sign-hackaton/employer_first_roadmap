@@ -84,8 +84,8 @@ func TestSeedMoscowCatalogIsIdempotentAndDoesNotCreateDemoCatalog(t *testing.T) 
 	if err := db.Preload("ExamCombinations.Items.ExamSubject").Preload("AdmissionScores").Find(&programs).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(programs) != 23 {
-		t.Fatalf("programs = %d, want 23", len(programs))
+	if len(programs) != 25 {
+		t.Fatalf("programs = %d, want 25", len(programs))
 	}
 	var hse models.EducationProgram
 	if err := db.Where("code = ? AND name = ?", "01.03.02", "Компьютерные науки и анализ данных").Preload("ExamCombinations.Items.ExamSubject").First(&hse).Error; err != nil {

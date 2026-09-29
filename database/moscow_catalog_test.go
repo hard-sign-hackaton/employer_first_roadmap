@@ -80,4 +80,29 @@ func TestSeedMoscowCatalogIsIdempotentAndDoesNotCreateDemoCatalog(t *testing.T) 
 	if links == 0 {
 		t.Fatal("expected confirmed direction-program links")
 	}
+	var programs []models.EducationProgram
+	if err := db.Preload("ExamCombinations.Items.ExamSubject").Preload("AdmissionScores").Find(&programs).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(programs) != 23 {
+		t.Fatalf("programs = %d, want 23", len(programs))
+	}
+	var hse models.EducationProgram
+	if err := db.Where("code = ? AND name = ?", "01.03.02", "Компьютерные науки и анализ данных").Preload("ExamCombinations.Items.ExamSubject").First(&hse).Error; err != nil {
+		t.Fatal(err)
+	}
+	if hse.SourceURL != "https://ba.hse.ru/minkrit" || hse.SourceCheckedAt == nil {
+		t.Fatalf("HSE source metadata is not preserved: %+v", hse)
+	}
+	var informaticsMinimum *int16
+	for _, combination := range hse.ExamCombinations {
+		for _, item := range combination.Items {
+			if item.ExamSubject.Name == "Информатика" {
+				informaticsMinimum = item.MinScore
+			}
+		}
+	}
+	if informaticsMinimum == nil || *informaticsMinimum != 65 {
+		t.Fatalf("HSE informatics minimum = %v, want 65", informaticsMinimum)
+	}
 }

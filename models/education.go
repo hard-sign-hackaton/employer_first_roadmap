@@ -1,5 +1,7 @@
 package models
 
+import "time"
+
 // University находится в одном регионе и содержит образовательные программы.
 type University struct {
 	ID          int64  `json:"id" gorm:"primaryKey;autoIncrement"`
@@ -20,7 +22,12 @@ type EducationProgram struct {
 	Code         string `json:"code" gorm:"size:32"`
 	Name         string `json:"name" gorm:"size:255;not null"`
 	Description  string `json:"description"`
-	IsActive     bool   `json:"is_active" gorm:"not null;default:true;index"`
+	// SourceURL and SourceCheckedAt preserve the official admission source used
+	// by production-like catalogs. They are intentionally optional for legacy
+	// demo data.
+	SourceURL       string     `json:"source_url" gorm:"size:500"`
+	SourceCheckedAt *time.Time `json:"source_checked_at,omitempty"`
+	IsActive        bool       `json:"is_active" gorm:"not null;default:true;index"`
 
 	University       University              `json:"university" gorm:"foreignKey:UniversityID"`
 	ExamCombinations []ExamCombination       `json:"exam_combinations" gorm:"foreignKey:EducationProgramID"`
@@ -38,10 +45,12 @@ type CareerDirectionEducationProgram struct {
 
 // ExamCombination действует для одной программы и одного года приёмной кампании.
 type ExamCombination struct {
-	ID                 int64   `json:"id" gorm:"primaryKey;autoIncrement"`
-	EducationProgramID int64   `json:"education_program_id" gorm:"not null;uniqueIndex:ux_exam_combination"`
-	AdmissionYear      int16   `json:"admission_year" gorm:"not null;uniqueIndex:ux_exam_combination;check:admission_year BETWEEN 2020 AND 2100"`
-	Name               *string `json:"name,omitempty" gorm:"size:160;uniqueIndex:ux_exam_combination"`
+	ID                 int64      `json:"id" gorm:"primaryKey;autoIncrement"`
+	EducationProgramID int64      `json:"education_program_id" gorm:"not null;uniqueIndex:ux_exam_combination"`
+	AdmissionYear      int16      `json:"admission_year" gorm:"not null;uniqueIndex:ux_exam_combination;check:admission_year BETWEEN 2020 AND 2100"`
+	Name               *string    `json:"name,omitempty" gorm:"size:160;uniqueIndex:ux_exam_combination"`
+	SourceURL          string     `json:"source_url" gorm:"size:500"`
+	SourceCheckedAt    *time.Time `json:"source_checked_at,omitempty"`
 
 	EducationProgram EducationProgram      `json:"education_program" gorm:"foreignKey:EducationProgramID"`
 	Items            []ExamCombinationItem `json:"items" gorm:"foreignKey:ExamCombinationID"`
@@ -58,10 +67,12 @@ type ExamCombinationItem struct {
 
 // AdmissionScoreHistory хранит исторические суммарные проходные баллы для сравнения программ.
 type AdmissionScoreHistory struct {
-	EducationProgramID int64  `json:"education_program_id" gorm:"primaryKey"`
-	AdmissionYear      int16  `json:"admission_year" gorm:"primaryKey;check:admission_year BETWEEN 2020 AND 2100"`
-	BudgetPassingScore *int16 `json:"budget_passing_score" gorm:"check:budget_passing_score BETWEEN 0 AND 400"`
-	PaidPassingScore   *int16 `json:"paid_passing_score" gorm:"check:paid_passing_score BETWEEN 0 AND 400"`
+	EducationProgramID int64      `json:"education_program_id" gorm:"primaryKey"`
+	AdmissionYear      int16      `json:"admission_year" gorm:"primaryKey;check:admission_year BETWEEN 2020 AND 2100"`
+	BudgetPassingScore *int16     `json:"budget_passing_score" gorm:"check:budget_passing_score BETWEEN 0 AND 400"`
+	PaidPassingScore   *int16     `json:"paid_passing_score" gorm:"check:paid_passing_score BETWEEN 0 AND 400"`
+	SourceURL          string     `json:"source_url" gorm:"size:500"`
+	SourceCheckedAt    *time.Time `json:"source_checked_at,omitempty"`
 }
 
 // AdmissionCampaignRule делает лимиты подачи заявлений настраиваемыми по годам.

@@ -162,24 +162,57 @@ func seedMoscowEducation(tx *gorm.DB, moscowID int64, subjects map[string]models
 		{"mirea_telecom", unis[6].name, "11.03.02", "Инфокоммуникационные технологии и системы связи", "ОП в области сетей и связи.", "https://priem.mirea.ru/", []string{"Русский язык", "Математика (профильная)", "Физика"}},
 		{"sechenov_biophysics", unis[7].name, "30.05.02", "Медицинская биофизика", "Медицинско-физическая специализация.", "https://www.sechenov.ru/univers/", []string{"Русский язык", "Химия", "Биология"}},
 		{"sechenov_biology", unis[7].name, "06.03.01", "Биология", "Биологическая ОП.", "https://www.sechenov.ru/univers/", []string{"Русский язык", "Химия", "Биология"}},
+		// These additions have programme-level official sources, rather than an
+		// inferred relation from a university-wide catalogue page.
+		{"hse_data", unis[0].name, "01.03.02", "Компьютерные науки и анализ данных", "ОП по прикладной математике и анализу данных.", "https://ba.hse.ru/minkrit", []string{"Русский язык", "Математика (профильная)", "Информатика"}},
+		{"mephi_energy", unis[3].name, "14.03.01", "Ядерная энергетика и теплофизика", "ОП в области ядерной энергетики.", "https://admission.mephi.ru/admission/baccalaureate-and-specialty/exams/list", []string{"Русский язык", "Математика (профильная)", "Физика"}},
+		{"rut_is", unis[4].name, "09.03.02", "Информационные системы и технологии", "Информационные системы и технологии на транспорте.", "https://www.rut-miit.ru/admissions/degrees", []string{"Русский язык", "Математика (профильная)", "Информатика"}},
+		{"rudn_ai", unis[5].name, "02.03.02", "Фундаментальная информатика и информационные технологии", "Профиль: искусственный интеллект: разработка и обучение интеллектуальных систем.", "https://admission.rudn.ru/pk/2026/adm_rules/bs/pp_bsm_26.pdf", []string{"Русский язык", "Математика (профильная)", "Информатика"}},
+		{"misis_pi", unis[2].name, "09.03.03", "Прикладная информатика", "ИТ-программа НИТУ МИСИС.", "https://jen.msk.misis.ru/applicants/admission/baccalaureate-and-specialty/list/perechen_vstupitel_nyhispytanii/", []string{"Русский язык", "Математика (профильная)", "Информатика"}},
+		{"mirea_ai", unis[6].name, "09.03.03", "Прикладная информатика", "ОП в области прикладной информатики.", "https://priem.mirea.ru/", []string{"Русский язык", "Математика (профильная)", "Информатика"}},
+		{"sechenov_medicine", unis[7].name, "31.05.01", "Лечебное дело", "Специалитет Сеченовского Университета.", "https://www.sechenov.ru/univers/", []string{"Русский язык", "Химия", "Биология"}},
+	}
+	checked := time.Date(2026, 9, 29, 0, 0, 0, 0, time.UTC)
+	confirmedMinimums := map[string]map[string]int16{
+		"hse_data":     {"Русский язык": 60, "Математика (профильная)": 70, "Информатика": 65},
+		"mephi_energy": {"Русский язык": 70, "Математика (профильная)": 75, "Физика": 75},
+		"rudn_ai":      {"Русский язык": 65, "Математика (профильная)": 65, "Информатика": 65},
+		"misis_pi":     {"Математика (профильная)": 65},
+	}
+	confirmedPassingScores := map[string]struct {
+		budget int16
+		source string
+	}{
+		"bmstu_it":      {278, "https://home.science.iu5.bmstu.ru/ab"},
+		"mephi_nuclear": {272, "https://admission.mephi.ru/admission/baccalaureate-and-specialty/exams/previous-years"},
+		"mephi_energy":  {271, "https://admission.mephi.ru/admission/baccalaureate-and-specialty/exams/previous-years"},
 	}
 	result := map[string]models.EducationProgram{}
 	for _, item := range data {
 		uni := universities[item.university]
-		p := models.EducationProgram{UniversityID: uni.ID, Code: item.code, Name: item.name, Description: item.description + " Официальный источник: " + item.source, IsActive: true}
+		p := models.EducationProgram{UniversityID: uni.ID, Code: item.code, Name: item.name, Description: item.description + " Официальный источник: " + item.source, SourceURL: item.source, SourceCheckedAt: &checked, IsActive: true}
 		if err := tx.Where("university_id = ? AND code = ? AND name = ?", uni.ID, p.Code, p.Name).Assign(p).FirstOrCreate(&p).Error; err != nil {
 			return nil, err
 		}
-		combo := models.ExamCombination{EducationProgramID: p.ID, AdmissionYear: 2026}
-		if err := tx.Where("education_program_id = ? AND admission_year = ?", p.ID, 2026).FirstOrCreate(&combo).Error; err != nil {
+		combo := models.ExamCombination{EducationProgramID: p.ID, AdmissionYear: 2026, SourceURL: item.source, SourceCheckedAt: &checked}
+		if err := tx.Where("education_program_id = ? AND admission_year = ?", p.ID, 2026).Assign(combo).FirstOrCreate(&combo).Error; err != nil {
 			return nil, err
 		}
 		for _, subject := range item.subjects {
 			link := models.ExamCombinationItem{ExamCombinationID: combo.ID, ExamSubjectID: subjectsMap(subjects, subject)}
+			if score, found := confirmedMinimums[item.key][subject]; found {
+				link.MinScore = &score
+			}
 			if link.ExamSubjectID == 0 {
 				return nil, fmt.Errorf("unknown subject %q", subject)
 			}
-			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&link).Error; err != nil {
+			if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "exam_combination_id"}, {Name: "exam_subject_id"}}, DoUpdates: clause.AssignmentColumns([]string{"min_score"})}).Create(&link).Error; err != nil {
+				return nil, err
+			}
+		}
+		if score, found := confirmedPassingScores[item.key]; found {
+			value := models.AdmissionScoreHistory{EducationProgramID: p.ID, AdmissionYear: 2025, BudgetPassingScore: &score.budget, SourceURL: score.source, SourceCheckedAt: &checked}
+			if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "education_program_id"}, {Name: "admission_year"}}, DoUpdates: clause.AssignmentColumns([]string{"budget_passing_score", "paid_passing_score", "source_url", "source_checked_at"})}).Create(&value).Error; err != nil {
 				return nil, err
 			}
 		}
@@ -192,7 +225,7 @@ func subjectsMap(subjects map[string]models.ExamSubject, name string) int64 { re
 
 func seedMoscowDirectionPrograms(tx *gorm.DB, directions map[string]models.CareerDirection, programs map[string]models.EducationProgram) error {
 	links := map[string][]string{
-		"yandex_dev": {"hse_pi", "bmstu_it", "misis_it"}, "yandex_data": {"hse_pi", "hse_bi", "mephi_it"}, "vk_dev": {"hse_pi", "mirea_se", "rudn_se"}, "vk_product": {"hse_bi", "rudn_management"}, "sber_data": {"hse_pi", "mephi_it", "rudn_management"}, "sber_dev": {"bmstu_it", "misis_it", "mirea_se"}, "mts_dev": {"bmstu_it", "mirea_se", "rut_it"}, "mts_telecom": {"mirea_telecom", "bmstu_auto"}, "avito_data": {"hse_pi", "hse_bi", "rudn_management"}, "avito_dev": {"hse_pi", "mirea_se", "rudn_se"}, "rosatom_nuclear": {"mephi_nuclear", "bmstu_auto"}, "rosatom_it": {"mephi_it", "misis_it"}, "rzd_transport": {"rut_transport", "bmstu_auto"}, "rzd_it": {"rut_it", "mirea_se"},
+		"yandex_dev": {"hse_pi", "bmstu_it", "mirea_ai"}, "yandex_data": {"hse_data", "hse_bi", "mephi_it"}, "vk_dev": {"hse_pi", "mirea_se", "rudn_se"}, "vk_product": {"hse_bi", "rudn_management"}, "sber_data": {"hse_data", "mephi_it", "rudn_ai"}, "sber_dev": {"bmstu_it", "misis_pi", "mirea_se"}, "mts_dev": {"bmstu_it", "mirea_se", "rut_it"}, "mts_telecom": {"mirea_telecom", "bmstu_auto"}, "avito_data": {"hse_data", "hse_bi", "rudn_management"}, "avito_dev": {"hse_pi", "mirea_se", "rudn_se"}, "rosatom_nuclear": {"mephi_nuclear", "mephi_energy", "bmstu_auto"}, "rosatom_it": {"mephi_it", "misis_pi"}, "rzd_transport": {"rut_transport", "bmstu_auto"}, "rzd_it": {"rut_it", "rut_is", "mirea_se"},
 	}
 	for direction, items := range links {
 		for _, program := range items {
@@ -212,7 +245,7 @@ func seedMoscowOpportunities(tx *gorm.DB, moscowID int64, companies map[string]m
 		course                                    int16
 		kind                                      string
 	}{
-		{"yandex", "yandex_dev", "Студенческие программы Яндекса", "https://yandex.ru/jobs/", "", 2, models.OpportunityTypeInternship}, {"yandex", "yandex_data", "Студенческие программы Яндекса", "https://yandex.ru/jobs/", "", 2, models.OpportunityTypeInternship},
+		{"yandex", "yandex_dev", "Young&&Yandex: стажировка в разработке", "https://yandex.ru/jobs/", "https://yandex.ru/jobs/internship", 2, models.OpportunityTypeInternship}, {"yandex", "yandex_data", "Young&&Yandex: стажировка в аналитике данных", "https://yandex.ru/jobs/", "https://yandex.ru/jobs/internship", 2, models.OpportunityTypeInternship},
 		{"vk", "vk_dev", "Карьера в VK", "https://vk.company/ru/", "", 2, models.OpportunityTypeInternship}, {"vk", "vk_product", "Карьера в VK", "https://vk.company/ru/", "", 2, models.OpportunityTypeInternship},
 		{"sber", "sber_data", "Студенческие программы Сбера", "https://sberstudent.ru/", "", 2, models.OpportunityTypeInternship}, {"sber", "sber_dev", "Студенческие программы Сбера", "https://sberstudent.ru/", "", 2, models.OpportunityTypeInternship},
 		{"mts", "mts_dev", "Карьера в МТС", "https://job.mts.ru/", "", 2, models.OpportunityTypeInternship}, {"mts", "mts_telecom", "Карьера в МТС", "https://job.mts.ru/", "", 2, models.OpportunityTypeInternship},

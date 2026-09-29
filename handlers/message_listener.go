@@ -21,6 +21,9 @@ func GlobalMessageListener(ctx maxbot.Context) error {
 	if strings.TrimSpace(ctx.Update().Message.Body.Text) == "/feedback" {
 		return ShowEmployerFeedback(ctx)
 	}
+	if strings.TrimSpace(ctx.Update().Message.Body.Text) == "/test_reminder" {
+		return SendTestReminder(ctx)
+	}
 
 	userState := utils.GetUserState(userID)
 	if strings.HasPrefix(string(userState), "small_survey_") {

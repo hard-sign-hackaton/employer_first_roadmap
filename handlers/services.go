@@ -1,6 +1,9 @@
 package handlers
 
-import "efr_bot/services"
+import (
+	"efr_bot/reminders"
+	"efr_bot/services"
+)
 
 type Services struct {
 	Profile    services.ProfileService
@@ -8,6 +11,7 @@ type Services struct {
 	Trajectory services.TrajectoryService
 	Roadmap    services.RoadmapService
 	Admission  services.AdmissionService
+	Reminder   *reminders.Service
 }
 
 var app Services

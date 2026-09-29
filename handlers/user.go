@@ -3,7 +3,9 @@ package handlers
 import (
 	"context"
 	. "efr_bot/models"
+	"efr_bot/reminders"
 	"efr_bot/utils"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -32,7 +34,24 @@ func welcomeMessage() string {
 		"/start — открыть стартовое меню;\n" +
 		"/roadmap — показать текущую цель, прогресс и продолжить roadmap;\n" +
 		"/feedback — проверить ответ работодателя по заявке;\n" +
+		"/test_reminder — проверить напоминание о текущем шаге;\n" +
 		"/restart — начать сценарий заново."
+}
+
+// SendTestReminder sends the same MAX message as the weekly job, but only to
+// the user who explicitly requested the check.
+func SendTestReminder(ctx maxbot.Context) error {
+	if app.Reminder == nil {
+		return ctx.Send("Сервис напоминаний пока не настроен. Попробуйте позже.")
+	}
+	err := app.Reminder.SendTestReminder(context.Background(), ctx.Update().UserID)
+	if errors.Is(err, reminders.ErrNoActiveRoadmap) {
+		return ctx.Send("У вас нет активного roadmap, поэтому отправлять напоминание пока не о чем.")
+	}
+	if err != nil {
+		return ctx.Send("Не удалось отправить тестовое напоминание. Попробуйте ещё раз позже.")
+	}
+	return nil
 }
 
 func ShowEmployerFeedback(ctx maxbot.Context) error {

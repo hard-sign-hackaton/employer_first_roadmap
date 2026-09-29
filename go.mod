@@ -6,6 +6,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/max-messenger/max-bot-api-client-go/v2 v2.4.0
 	github.com/max-messenger/maxbot v1.1.0
+	github.com/robfig/cron/v3 v3.0.1
 	gorm.io/gorm v1.31.2
 )
 

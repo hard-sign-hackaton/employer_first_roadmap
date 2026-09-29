@@ -5,6 +5,7 @@ import (
 	"efr_bot/database"
 	"efr_bot/employerapi"
 	"efr_bot/handlers"
+	"efr_bot/reminders"
 	"efr_bot/repositories"
 	"efr_bot/services"
 	"log"
@@ -52,12 +53,22 @@ func main() {
 	careerRepository := repositories.NewGormCareerRepository(db)
 	educationRepository := repositories.NewGormEducationRepository(db)
 	roadmapRepository := repositories.NewGormRoadmapRepository(db)
+	reminderRepository := repositories.NewGormReminderRepository(db)
+
+	// Получение токена бота из переменных окружения
+	accessToken := os.Getenv("BOT_TOKEN")
+	bot, err := maxbot.NewApi(accessToken)
+	if err != nil {
+		log.Fatal(err)
+	}
+	reminderService := reminders.NewService(reminderRepository, reminders.NewMaxSender(bot.Client()))
 	handlers.Configure(handlers.Services{
 		Profile:    services.NewProfileService(profileRepository),
 		Reference:  services.NewReferenceService(referenceRepository),
 		Trajectory: services.NewTrajectoryService(careerRepository, educationRepository, profileRepository, roadmapRepository),
 		Roadmap:    services.NewRoadmapService(roadmapRepository, careerRepository),
 		Admission:  services.NewAdmissionService(educationRepository, profileRepository, roadmapRepository, careerRepository),
+		Reminder:   reminderService,
 	})
 
 	// Employer API and the bot use the same PostgreSQL catalog. Once an
@@ -81,13 +92,12 @@ func main() {
 		}
 	}()
 
-	// Получение токена бота из переменных окружения
-	access_token := os.Getenv("BOT_TOKEN")
-
-	// Создание нового экземпляра бота
-	bot, err := maxbot.NewApi(access_token)
+	reminderConfig, err := reminders.SchedulerConfigFromEnv()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Некорректная конфигурация напоминаний: %v", err)
+	}
+	if _, err := reminders.StartScheduler(context.Background(), reminderService, reminderConfig); err != nil {
+		log.Fatalf("Не удалось запустить планировщик напоминаний: %v", err)
 	}
 
 	// ========== Обработка событий ==========
@@ -106,6 +116,7 @@ func main() {
 	bot.HandleCallback("/admission_program_toggle", handlers.AdmissionProgramToggle)
 	bot.HandleCallback("/admission_plan_done", handlers.AdmissionPlanDone)
 	bot.HandleCallback("/admission_plan_reset", handlers.AdmissionPlanReset)
+	bot.HandleCallback("/open_roadmap", handlers.OpenCurrentRoadmap)
 
 	// Запуск бота и начало мониторинга событий
 	log.Println("Бот запускается...")

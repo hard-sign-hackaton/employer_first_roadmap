@@ -59,43 +59,52 @@ Content-Type: application/json
 Каждое изменение добавляется в историю, а не перезаписывает предыдущее.
 Пользователь проверяет актуальный ответ и историю в боте командой `/feedback`.
 
-### Запуск через Docker Compose
-```bash
-docker compose up [--build]
-```
+### Запуск: выберите один каталог
 
-### Демонстрационная БД
-
-Команда ниже поднимает отдельную PostgreSQL с демонстрационными данными; она не использует основной volume.
-
-1. Создайте `.env` рядом с `docker-compose.yml` и укажите токен бота:
+Создайте `.env` рядом с `docker-compose.yml` и укажите как минимум токен MAX:
 
 ```env
 BOT_TOKEN="ваш_токен_MAX"
 ```
 
-2. Запустите бот и demo-БД:
+Дальше выберите один из двух изолированных контуров. Не нужно вручную менять
+`SEED_DEMO_DATA` или `SEED_MOSCOW_CATALOG` в `.env`: нужный Compose-override
+задаёт их сам. Для одновременной работы двух контуров используйте разные имена
+проектов, как в командах ниже.
+
+| Контур | Данные | Команда запуска |
+| --- | --- | --- |
+| Demo | Тестовые связи, баллы и возможности. Подходит для разработки и проверки всех сценариев. | `docker compose -p efr_demo -f docker-compose.yml -f docker-compose.demo.yml up --build -d` |
+| Москва / real catalog | Проверенные московские вузы, ОП и возможности работодателей с официальными ссылками. Подходит для демонстрации реальных траекторий. | `docker compose -p efr_moscow -f docker-compose.yml -f docker-compose.moscow.yml up --build -d` |
+
+Обычный `docker compose up` без override применяет миграции и обязательные
+справочники, но **не** загружает ни demo-, ни московский каталог.
+
+### Демонстрационный контур
+
+Запуск:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build
+docker compose -p efr_demo -f docker-compose.yml -f docker-compose.demo.yml up --build -d
 ```
 
-При старте бот автоматически применит миграции и заполнит demo-БД. Для запуска в фоне добавьте `-d`:
+Проверить состояние и логи:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build -d
+docker compose -p efr_demo -f docker-compose.yml -f docker-compose.demo.yml ps
+docker compose -p efr_demo -f docker-compose.yml -f docker-compose.demo.yml logs -f efr_bot
 ```
 
-Проверить состояние контейнеров:
+Остановить, сохранив demo-данные:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.demo.yml ps
+docker compose -p efr_demo -f docker-compose.yml -f docker-compose.demo.yml down
 ```
 
-Остановить demo-окружение, сохранив данные:
+Чтобы начать demo-контур с пустой БД, удалите **только его** volume:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.demo.yml down
+docker compose -p efr_demo -f docker-compose.yml -f docker-compose.demo.yml down -v
 ```
 
 Данные предназначены только для MVP-демонстрации: названия организаций и вузов реальны, но связи, баллы,
@@ -106,6 +115,41 @@ docker compose -f docker-compose.yml -f docker-compose.demo.yml down
 17 тегов интересов. У каждого карьерного направления есть связь хотя бы с одной ОП, набором ЕГЭ и
 демонстрационной возможностью работодателя. Это позволяет проверить ранжирование по интересам,
 фильтрацию направлений 11-классника по выбранным ЕГЭ и формирование roadmap в разных отраслях.
+
+### Московский контур с реальными данными
+
+Контур использует свою PostgreSQL (`employer_first_roadmap_moscow`) и свой volume,
+поэтому не смешивается с demo-БД. При первом старте бот применит миграции и
+идемпотентно импортирует реальный каталог.
+
+```bash
+docker compose -p efr_moscow -f docker-compose.yml -f docker-compose.moscow.yml up --build -d
+```
+
+Проверить состояние и логи:
+
+```bash
+docker compose -p efr_moscow -f docker-compose.yml -f docker-compose.moscow.yml ps
+docker compose -p efr_moscow -f docker-compose.yml -f docker-compose.moscow.yml logs -f efr_bot
+```
+
+Остановить, сохранив каталог:
+
+```bash
+docker compose -p efr_moscow -f docker-compose.yml -f docker-compose.moscow.yml down
+```
+
+Полностью удалить только московскую БД и при следующем запуске импортировать
+каталог заново:
+
+```bash
+docker compose -p efr_moscow -f docker-compose.yml -f docker-compose.moscow.yml down -v
+```
+
+Сейчас real-каталог содержит 10 работодателей, 8 московских вузов, 26 ОП и 19
+возможностей. Для возможностей хранятся официальные карьерные/стажировочные
+ссылки и дата проверки; удалённые варианты не привязаны к региону, а очные — к
+Москве. Demo-записи в этом контуре не создаются.
 
 ### Интеграционный сценарный тест
 

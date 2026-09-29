@@ -1,0 +1,62 @@
+{
+  "fixture_version": "1.0",
+  "description": "Isolated API evaluation fixture. Create the company and employer account through the admin API; use a unique suffix for repeated runs. Do not publish generated tokens in Git.",
+  "company": {
+    "name": "EФР API проверка <run-id>",
+    "description": "Изолированные данные для проверки API работодателя",
+    "website_url": "https://example.org"
+  },
+  "employer_account": {
+    "login": "efr-evaluator-<run-id>",
+    "role": "employer",
+    "company_id": "<company.id>"
+  },
+  "university": {
+    "region_id": "<regions[0].id>",
+    "name": "EФР тестовый вуз <run-id>",
+    "description": "Изолированные данные для проверки API",
+    "website_url": "https://example.org"
+  },
+  "education_program": {
+    "university_id": "<university.id>",
+    "code": "09.03.01",
+    "name": "EФР тестовая программа <run-id>",
+    "description": "Изолированные данные для проверки API"
+  },
+  "direction": {
+    "name": "Разработка программного обеспечения — проверка API",
+    "description": "Тестовое направление, не используемое для реальных заявок"
+  },
+  "direction_programs": {
+    "education_program_ids": ["<education_program.id>"]
+  },
+  "direction_tags": {
+    "interest_tags": [
+      {"interest_tag_id": "<interest_tags[0].id>", "weight": 1.0}
+    ]
+  },
+  "opportunity": {
+    "career_direction_id": "<direction.id>",
+    "type": "internship",
+    "name": "Тестовая стажировка API",
+    "description": "Тестовая запись для проверки кабинета работодателя",
+    "url": "https://example.org/test-internship",
+    "active_listing_url": "https://example.org/test-internship",
+    "work_format": "remote",
+    "min_study_year": 1,
+    "is_active": false
+  },
+  "feedback": {
+    "status": "under_review",
+    "message": "Тестовая заявка получена",
+    "contact": "test-hr@example.org"
+  },
+  "cleanup": {
+    "company": {"is_active": false},
+    "university": {"is_active": false},
+    "education_program": {"is_active": false},
+    "direction": {"is_active": false},
+    "opportunity": {"is_active": false},
+    "account": {"is_active": false}
+  }
+}

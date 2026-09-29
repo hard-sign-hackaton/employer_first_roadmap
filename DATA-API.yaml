@@ -1,0 +1,350 @@
+# Evaluator manifest. Adjust schema_version if the organizer provides an
+# official validator schema with a different version.
+schema_version: "1.0"
+solution: "Employer First Roadmap"
+base_url: "https://135.106.216.99"
+openapi: "openapi.json"
+test_data: "docs/api-test-data.json"
+variables:
+  RUN_ID: "unique suffix supplied by the test runner for each run"
+authentication:
+  type: bearer
+  header: Authorization
+  roles:
+    admin: "ADMIN_API_TOKEN from the protected submission channel"
+    employer: "token returned by POST /api/v1/admin/accounts during fixture setup"
+checks:
+  - id: health
+    required: true
+    role: public
+    method: GET
+    path: /healthz
+    request: {path_params: {}, query_params: {}, headers: {}, body: null}
+    expected:
+      status_codes: [200]
+      content_type: application/json
+      json_required: [status]
+      json_example: {status: ok}
+  - id: admin_identity
+    required: true
+    role: admin
+    method: GET
+    path: /api/v1/me
+    request:
+      path_params: {}
+      query_params: {}
+      headers: {Authorization: "Bearer ${ADMIN_API_TOKEN}"}
+      body: null
+    expected:
+      status_codes: [200]
+      content_type: application/json
+      json_required: [id, login, role, is_active]
+      json_example: {role: admin, is_active: true}
+  - id: reference_data
+    required: true
+    role: admin
+    method: GET
+    path: /api/v1/reference-data
+    request:
+      path_params: {}
+      query_params: {}
+      headers: {Authorization: "Bearer ${ADMIN_API_TOKEN}"}
+      body: null
+    expected:
+      status_codes: [200]
+      content_type: application/json
+      json_required: [regions, interest_tags, exam_subjects]
+      capture: {first_region_id: "$.regions[0].id", first_interest_tag_id: "$.interest_tags[0].id"}
+  - id: create_test_university
+    required: true
+    role: admin
+    method: POST
+    path: /api/v1/admin/universities
+    request:
+      path_params: {}
+      query_params: {}
+      headers: {Authorization: "Bearer ${ADMIN_API_TOKEN}", Content-Type: application/json}
+      body_ref: "docs/api-test-data.json#/university"
+      substitutions: {"<regions[0].id>": "${first_region_id}", "<run-id>": "${RUN_ID}"}
+    expected:
+      status_codes: [201]
+      content_type: application/json
+      json_required: [id, region_id, name, description, website_url]
+      capture: {university_id: "$.id"}
+  - id: create_test_program
+    required: true
+    role: admin
+    method: POST
+    path: /api/v1/admin/education-programs
+    request:
+      path_params: {}
+      query_params: {}
+      headers: {Authorization: "Bearer ${ADMIN_API_TOKEN}", Content-Type: application/json}
+      body_ref: "docs/api-test-data.json#/education_program"
+      substitutions: {"<university.id>": "${university_id}", "<run-id>": "${RUN_ID}"}
+    expected:
+      status_codes: [201]
+      content_type: application/json
+      json_required: [id, university_id, code, name, description]
+      capture: {program_id: "$.id"}
+  - id: education_programs
+    required: true
+    role: admin
+    method: GET
+    path: /api/v1/education-programs
+    request:
+      path_params: {}
+      query_params: {}
+      headers: {Authorization: "Bearer ${ADMIN_API_TOKEN}"}
+      body: null
+    expected:
+      status_codes: [200]
+      content_type: application/json
+      json_required: [education_programs]
+  - id: create_test_company
+    required: true
+    role: admin
+    method: POST
+    path: /api/v1/admin/companies
+    request:
+      path_params: {}
+      query_params: {}
+      headers: {Authorization: "Bearer ${ADMIN_API_TOKEN}", Content-Type: application/json}
+      body_ref: "docs/api-test-data.json#/company"
+      substitutions: {"<run-id>": "${RUN_ID}"}
+    expected:
+      status_codes: [201]
+      content_type: application/json
+      json_required: [id, name, description, website_url, is_active]
+      capture: {company_id: "$.id"}
+  - id: create_employer_account
+    required: true
+    role: admin
+    method: POST
+    path: /api/v1/admin/accounts
+    request:
+      path_params: {}
+      query_params: {}
+      headers: {Authorization: "Bearer ${ADMIN_API_TOKEN}", Content-Type: application/json}
+      body_ref: "docs/api-test-data.json#/employer_account"
+      substitutions: {"<company.id>": "${company_id}", "<run-id>": "${RUN_ID}"}
+    expected:
+      status_codes: [201]
+      content_type: application/json
+      json_required: [id, login, role, company_id, is_active, token]
+      capture: {employer_account_id: "$.id", EMPLOYER_API_TOKEN: "$.token"}
+  - id: employer_identity
+    required: true
+    role: employer
+    method: GET
+    path: /api/v1/me
+    request:
+      path_params: {}
+      query_params: {}
+      headers: {Authorization: "Bearer ${EMPLOYER_API_TOKEN}"}
+      body: null
+    expected:
+      status_codes: [200]
+      content_type: application/json
+      json_required: [id, login, role, company_id, is_active]
+      json_example: {role: employer}
+  - id: employer_update_company
+    required: true
+    role: employer
+    method: PUT
+    path: /api/v1/employer/company
+    request:
+      path_params: {}
+      query_params: {}
+      headers: {Authorization: "Bearer ${EMPLOYER_API_TOKEN}", Content-Type: application/json}
+      body_ref: "docs/api-test-data.json#/company"
+      substitutions: {"<run-id>": "${RUN_ID}"}
+    expected:
+      status_codes: [200]
+      content_type: application/json
+      json_required: [id, name, description, website_url, is_active]
+  - id: employer_create_direction
+    required: true
+    role: employer
+    method: POST
+    path: /api/v1/employer/directions
+    request:
+      path_params: {}
+      query_params: {}
+      headers: {Authorization: "Bearer ${EMPLOYER_API_TOKEN}", Content-Type: application/json}
+      body_ref: "docs/api-test-data.json#/direction"
+    expected:
+      status_codes: [201]
+      content_type: application/json
+      json_required: [id, company_id, name, description, is_active, interest_tags, education_program_ids]
+      capture: {direction_id: "$.id"}
+  - id: employer_link_program
+    required: true
+    role: employer
+    method: PUT
+    path: /api/v1/employer/directions/{directionID}/education-programs
+    request:
+      path_params: {directionID: "${direction_id}"}
+      query_params: {}
+      headers: {Authorization: "Bearer ${EMPLOYER_API_TOKEN}", Content-Type: application/json}
+      body_ref: "docs/api-test-data.json#/direction_programs"
+      substitutions: {"<education_program.id>": "${program_id}"}
+    expected:
+      status_codes: [204]
+      content_type: null
+      json_required: []
+  - id: employer_link_interest
+    required: true
+    role: employer
+    method: PUT
+    path: /api/v1/employer/directions/{directionID}/interest-tags
+    request:
+      path_params: {directionID: "${direction_id}"}
+      query_params: {}
+      headers: {Authorization: "Bearer ${EMPLOYER_API_TOKEN}", Content-Type: application/json}
+      body_ref: "docs/api-test-data.json#/direction_tags"
+      substitutions: {"<interest_tags[0].id>": "${first_interest_tag_id}"}
+    expected:
+      status_codes: [204]
+      content_type: null
+      json_required: []
+  - id: employer_create_opportunity
+    required: true
+    role: employer
+    method: POST
+    path: /api/v1/employer/opportunities
+    request:
+      path_params: {}
+      query_params: {}
+      headers: {Authorization: "Bearer ${EMPLOYER_API_TOKEN}", Content-Type: application/json}
+      body_ref: "docs/api-test-data.json#/opportunity"
+      substitutions: {"<direction.id>": "${direction_id}"}
+    expected:
+      status_codes: [201]
+      content_type: application/json
+      json_required: [id, career_direction_id, type, name, work_format, min_study_year, is_active, updated_at]
+      capture: {opportunity_id: "$.id"}
+  - id: employer_list_opportunities
+    required: true
+    role: employer
+    method: GET
+    path: /api/v1/employer/opportunities
+    request:
+      path_params: {}
+      query_params: {}
+      headers: {Authorization: "Bearer ${EMPLOYER_API_TOKEN}"}
+      body: null
+    expected:
+      status_codes: [200]
+      content_type: application/json
+      json_required: [opportunities]
+  - id: employer_list_applications
+    required: true
+    role: employer
+    method: GET
+    path: /api/v1/employer/applications
+    request:
+      path_params: {}
+      query_params: {}
+      headers: {Authorization: "Bearer ${EMPLOYER_API_TOKEN}"}
+      body: null
+    expected:
+      status_codes: [200]
+      content_type: application/json
+      json_required: [applications]
+      json_array_item_required: [application_id, roadmap_id, user_id, grade, user_region, career_direction, opportunity_id, opportunity_name, submitted_at, status, feedback_history]
+  - id: feedback_unknown_application
+    required: true
+    role: employer
+    method: PATCH
+    path: /api/v1/employer/applications/{applicationID}
+    request:
+      path_params: {applicationID: 9223372036854775807}
+      query_params: {}
+      headers: {Authorization: "Bearer ${EMPLOYER_API_TOKEN}", Content-Type: application/json}
+      body_ref: "docs/api-test-data.json#/feedback"
+    expected:
+      status_codes: [404]
+      content_type: application/json
+      json_required: [error]
+  - id: reject_missing_auth
+    required: true
+    role: public
+    method: GET
+    path: /api/v1/me
+    request: {path_params: {}, query_params: {}, headers: {}, body: null}
+    expected:
+      status_codes: [401]
+      content_type: application/json
+      json_required: [error]
+  - id: reject_wrong_role
+    required: true
+    role: employer
+    method: GET
+    path: /api/v1/admin/companies
+    request:
+      path_params: {}
+      query_params: {}
+      headers: {Authorization: "Bearer ${EMPLOYER_API_TOKEN}"}
+      body: null
+    expected:
+      status_codes: [403]
+      content_type: application/json
+      json_required: [error]
+  - id: deactivate_test_account
+    required: true
+    role: admin
+    method: PATCH
+    path: /api/v1/admin/accounts/{accountID}
+    request:
+      path_params: {accountID: "${employer_account_id}"}
+      query_params: {}
+      headers: {Authorization: "Bearer ${ADMIN_API_TOKEN}", Content-Type: application/json}
+      body_ref: "docs/api-test-data.json#/cleanup/account"
+    expected:
+      status_codes: [200]
+      content_type: application/json
+      json_required: [id, login, role, is_active]
+      json_example: {is_active: false}
+  - id: archive_test_company
+    required: true
+    role: admin
+    method: PATCH
+    path: /api/v1/admin/companies/{companyID}/archive
+    request:
+      path_params: {companyID: "${company_id}"}
+      query_params: {}
+      headers: {Authorization: "Bearer ${ADMIN_API_TOKEN}", Content-Type: application/json}
+      body_ref: "docs/api-test-data.json#/cleanup/company"
+    expected:
+      status_codes: [204]
+      content_type: null
+      json_required: []
+  - id: archive_test_program
+    required: true
+    role: admin
+    method: PATCH
+    path: /api/v1/admin/education-programs/{programID}/archive
+    request:
+      path_params: {programID: "${program_id}"}
+      query_params: {}
+      headers: {Authorization: "Bearer ${ADMIN_API_TOKEN}", Content-Type: application/json}
+      body_ref: "docs/api-test-data.json#/cleanup/education_program"
+    expected:
+      status_codes: [204]
+      content_type: null
+      json_required: []
+  - id: archive_test_university
+    required: true
+    role: admin
+    method: PATCH
+    path: /api/v1/admin/universities/{universityID}/archive
+    request:
+      path_params: {universityID: "${university_id}"}
+      query_params: {}
+      headers: {Authorization: "Bearer ${ADMIN_API_TOKEN}", Content-Type: application/json}
+      body_ref: "docs/api-test-data.json#/cleanup/university"
+    expected:
+      status_codes: [204]
+      content_type: null
+      json_required: []

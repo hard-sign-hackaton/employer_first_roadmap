@@ -234,12 +234,28 @@ func testTrajectoryPreflightAvoidsCatalogDeadEnds(t *testing.T) {
 	if err != nil || local.Status != dto.TrajectoryPathStatusAvailable || len(local.ExamSets) == 0 {
 		t.Fatalf("local preflight = %#v, err=%v", local, err)
 	}
+	// В roadmap пользователь редактирует конкретный набор, а не просит новый
+	// список рекомендаций. Точный локально доступный набор должен остаться доступным.
+	localEditedSet, err := trajectoryService.AssessTrajectoryPath(ctx, localUserID, dto.AssessTrajectoryPathRequest{
+		CareerDirectionID: localDirection.ID,
+		ExamSubjectIDs:    local.ExamSets[0].ExamSubjectIDs,
+	})
+	if err != nil || localEditedSet.Status != dto.TrajectoryPathStatusAvailable {
+		t.Fatalf("exact edited EGE set must keep local path: %#v, err=%v", localEditedSet, err)
+	}
 
 	relocationUserID := scenarioUserID + 41
 	if _, err := profileService.SaveProfile(ctx, relocationUserID, dto.UpsertProfileRequest{Grade: 10, RegionID: permID, WillingToRelocate: false}); err != nil {
 		t.Fatalf("save relocation profile: %v", err)
 	}
 	medicalDirection := findDirection("Группа компаний «МЕДСИ»", "Врач-лечебник")
+	wrongMedicalSet, err := trajectoryService.AssessTrajectoryPath(ctx, relocationUserID, dto.AssessTrajectoryPathRequest{
+		CareerDirectionID: medicalDirection.ID,
+		ExamSubjectIDs:    local.ExamSets[0].ExamSubjectIDs,
+	})
+	if err != nil || wrongMedicalSet.Status != dto.TrajectoryPathStatusUnavailable {
+		t.Fatalf("incompatible edited EGE set must be unavailable: %#v, err=%v", wrongMedicalSet, err)
+	}
 	relocation, err := trajectoryService.AssessTrajectoryPath(ctx, relocationUserID, dto.AssessTrajectoryPathRequest{CareerDirectionID: medicalDirection.ID})
 	if err != nil || relocation.Status != dto.TrajectoryPathStatusRelocationRequired || relocation.Issue != dto.TrajectoryPathIssueNoEducationInRegion {
 		t.Fatalf("relocation preflight = %#v, err=%v", relocation, err)
@@ -518,6 +534,23 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 	if err != nil || earlyApplication.CompanyOpportunityID != opportunity.ID || earlyApplication.Status != "submitted" {
 		t.Fatalf("early employer application during experience: %v; application=%#v", err, earlyApplication)
 	}
+	// Отказ по первой стажировке не должен возвращать пользователя в начало:
+	// альтернативная возможность той же компании становится следующим шагом.
+	alternative := models.CompanyOpportunity{CompanyID: company.ID, CareerDirectionID: direction.ID, Type: models.OpportunityTypePractice, Name: "Альтернативная практика Т1", Description: "Тестовая альтернативная возможность", MinStudyYear: 3, RegionID: &regionID, IsActive: true}
+	if err := tx.Create(&alternative).Error; err != nil {
+		t.Fatalf("create alternative employer opportunity: %v", err)
+	}
+	alternatives, err := roadmapService.RejectEmployerOpportunity(ctx, userID, dto.RejectEmployerOpportunityRequest{RoadmapID: roadmap.ID})
+	if err != nil || len(alternatives) != 1 || alternatives[0].ID != alternative.ID {
+		t.Fatalf("rejected opportunity must expose only the alternative: %v; alternatives=%#v", err, alternatives)
+	}
+	if _, err := roadmapService.SelectEmployerOpportunity(ctx, userID, roadmap.ID, alternative.ID); err != nil {
+		t.Fatalf("select alternative employer opportunity: %v", err)
+	}
+	opportunity, err = roadmapService.GetEmployerOpportunity(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
+	if err != nil || opportunity.ID != alternative.ID || opportunity.AttemptStatus != "" {
+		t.Fatalf("selected alternative must replace current step: %v; opportunity=%#v", err, opportunity)
+	}
 	for index := 0; index < 2; index++ {
 		current, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})
 		if err != nil || current.NextAction == nil {
@@ -531,11 +564,11 @@ func testAdmissionScenarioUsesLatestPublishedRules(t *testing.T) {
 	if err != nil || application.CompanyOpportunityID != opportunity.ID || application.Status != "submitted" {
 		t.Fatalf("submit employer application: %v; application=%#v", err, application)
 	}
-	if err := tx.Create(&models.EmployerFeedback{RoadmapID: roadmap.ID, Status: "interview", Message: "Приглашаем на интервью", Contact: "hr@example.test"}).Error; err != nil {
+	if err := tx.Create(&models.EmployerFeedback{RoadmapID: roadmap.ID, EmployerOpportunityAttemptID: &application.ID, Status: "interview", Message: "Приглашаем на интервью", Contact: "hr@example.test"}).Error; err != nil {
 		t.Fatalf("create employer feedback: %v", err)
 	}
 	employerApplications, err := roadmapService.ListEmployerApplications(ctx, userID)
-	if err != nil || len(employerApplications) != 1 || employerApplications[0].Status != "interview" || employerApplications[0].Contact != "hr@example.test" {
+	if err != nil || len(employerApplications) != 2 || employerApplications[0].Status != "interview" || employerApplications[0].Contact != "hr@example.test" || employerApplications[1].Status != "rejected" {
 		t.Fatalf("list employer applications: %v; applications=%#v", err, employerApplications)
 	}
 	finalRoadmap, err := roadmapService.GetRoadmap(ctx, userID, dto.GetRoadmapRequest{RoadmapID: roadmap.ID})

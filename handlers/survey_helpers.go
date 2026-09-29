@@ -28,6 +28,17 @@ func showExamSubjectSelection(ctx maxbot.Context, nextState models.UserState) er
 	if len(subjects) == 0 {
 		return ctx.Send("Список предметов ЕГЭ пока не настроен. Обратитесь к администратору бота.")
 	}
+	previouslySelected := make(map[int64]struct{}, len(s.SelectedExamIDs))
+	if nextState == models.UserStateRoadmapExamChoiceSubjects {
+		for _, subjectID := range s.SelectedExamIDs {
+			previouslySelected[subjectID] = struct{}{}
+		}
+		if len(previouslySelected) == 0 {
+			for _, subjectID := range s.PlannedExamIDs {
+				previouslySelected[subjectID] = struct{}{}
+			}
+		}
+	}
 	s.AvailableExamIDs = nil
 	s.AvailableExamNames = nil
 	s.SelectedExamIDs = nil
@@ -41,6 +52,10 @@ func showExamSubjectSelection(ctx maxbot.Context, nextState models.UserState) er
 		}
 		s.AvailableExamIDs = append(s.AvailableExamIDs, subject.ID)
 		s.AvailableExamNames = append(s.AvailableExamNames, subject.Name)
+		if _, selected := previouslySelected[subject.ID]; selected {
+			s.SelectedExamIDs = append(s.SelectedExamIDs, subject.ID)
+			s.SelectedExamNames = append(s.SelectedExamNames, subject.Name)
+		}
 	}
 	utils.UpdateUserStateStorage(userID, nextState)
 	text, keyboard := examSubjectsQuestion(s)
@@ -126,6 +141,21 @@ func showGoalConfirmation(ctx maxbot.Context, state models.UserState) error {
 func assessCurrentTrajectoryPath(ctx maxbot.Context) (dto.TrajectoryPathAssessmentResponse, error) {
 	s := utils.GetSmallSurvey(ctx.Update().UserID)
 	return assessTrajectoryPath(ctx, s.CareerDirectionID)
+}
+
+// assessRoadmapExamSet проверяет точный набор, выбранный пользователем в roadmap.
+// Для 9–10 классов нельзя подменять его просто рекомендованными наборами.
+func assessRoadmapExamSet(ctx maxbot.Context) (dto.TrajectoryPathAssessmentResponse, error) {
+	s := utils.GetSmallSurvey(ctx.Update().UserID)
+	return app.Trajectory.AssessTrajectoryPath(context.Background(), ctx.Update().UserID, roadmapExamSetAssessmentRequest(s))
+}
+
+func roadmapExamSetAssessmentRequest(s *utils.SmallSurveyData) dto.AssessTrajectoryPathRequest {
+	ids, _ := roadmapExamSubjects(s)
+	return dto.AssessTrajectoryPathRequest{
+		CareerDirectionID: s.CareerDirectionID,
+		ExamSubjectIDs:    append([]int64(nil), ids...),
+	}
 }
 
 func assessTrajectoryPath(ctx maxbot.Context, careerDirectionID int64) (dto.TrajectoryPathAssessmentResponse, error) {

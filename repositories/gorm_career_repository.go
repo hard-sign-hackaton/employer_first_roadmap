@@ -87,3 +87,20 @@ func (r *GormCareerRepository) FindActiveOpportunity(ctx context.Context, compan
 		First(&opportunity).Error
 	return opportunity, err
 }
+
+func (r *GormCareerRepository) ListActiveOpportunities(ctx context.Context, companyID, careerDirectionID, regionID int64, excludedIDs []int64) ([]models.CompanyOpportunity, error) {
+	var opportunities []models.CompanyOpportunity
+	query := r.db.WithContext(ctx).
+		Preload("Company").
+		Where("company_id = ? AND career_direction_id = ? AND is_active = ?", companyID, careerDirectionID, true).
+		Where("region_id = ? OR (region_id IS NULL AND work_format = 'remote')", regionID).
+		Order(gorm.Expr("CASE WHEN region_id = ? THEN 0 ELSE 1 END", regionID)).
+		Order("min_study_year ASC, id ASC")
+	if len(excludedIDs) > 0 {
+		query = query.Where("id NOT IN ?", excludedIDs)
+	}
+	if err := query.Find(&opportunities).Error; err != nil {
+		return nil, err
+	}
+	return opportunities, nil
+}

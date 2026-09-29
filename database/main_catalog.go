@@ -11,18 +11,18 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// MoscowCatalogSeedEnabled is intentionally separate from DemoSeedEnabled.
+// MainCatalogSeedEnabled is intentionally separate from DemoSeedEnabled.
 // A real catalog must never share the demo database/volume by accident.
-func MoscowCatalogSeedEnabled() bool {
-	return strings.EqualFold(os.Getenv("SEED_MOSCOW_CATALOG"), "true")
+func MainCatalogSeedEnabled() bool {
+	return strings.EqualFold(os.Getenv("SEED_MAIN_CATALOG"), "true")
 }
 
-// SeedMoscowCatalog imports the reviewed Moscow-only catalog.  Every URL below
+// SeedMainCatalog imports the reviewed production catalog. Every URL below
 // is an official institution/company page; program-to-direction links and
 // interest tags are editorial product mappings, not claims made by a university.
 // Passing scores are intentionally absent until a university publishes a source
 // that can be stored and checked for a concrete programme and campaign.
-func SeedMoscowCatalog(db *gorm.DB) error {
+func SeedMainCatalog(db *gorm.DB) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		regions, err := seedRegions(tx)
 		if err != nil {
@@ -55,6 +55,9 @@ func SeedMoscowCatalog(db *gorm.DB) error {
 			return err
 		}
 		if err := seedMoscowOpportunities(tx, moscow.ID, companies, directions); err != nil {
+			return err
+		}
+		if err := seedAdmissionRules(tx); err != nil {
 			return err
 		}
 		return seedMoscowRoadmapTemplates(tx, directions)
@@ -293,7 +296,7 @@ func seedMoscowOpportunities(tx *gorm.DB, moscowID int64, companies map[string]m
 }
 
 func seedMoscowRoadmapTemplates(tx *gorm.DB, directions map[string]models.CareerDirection) error {
-	steps := []struct{ typ, title string }{{models.RoadmapStepTypeChooseOrConfirmExams, "Подтвердить набор ЕГЭ"}, {models.RoadmapStepTypePrepareForExams, "Подготовиться к ЕГЭ"}, {models.RoadmapStepTypePassExams, "Сдать ЕГЭ"}, {models.RoadmapStepTypeChooseUniversity, "Выбрать вузы и образовательные программы"}, {models.RoadmapStepTypeSubmitAdmissionDocuments, "Подать документы"}, {models.RoadmapStepTypeConfirmEnrollment, "Подтвердить зачисление"}, {models.RoadmapStepTypeLearnAtUniversity, "Учиться в выбранном вузе"}, {models.RoadmapStepTypeEmployerExperience, "Получить практический опыт у работодателя"}, {models.RoadmapStepTypeApplyToEmployer, "Подать заявку в компанию"}}
+	steps := []struct{ typ, title string }{{models.RoadmapStepTypeChooseOrConfirmExams, "Подтвердить набор ЕГЭ"}, {models.RoadmapStepTypePrepareForExams, "Подготовиться к ЕГЭ"}, {models.RoadmapStepTypePassExams, "Сдать ЕГЭ"}, {models.RoadmapStepTypeChooseUniversity, "Выбрать вузы и образовательные программы"}, {models.RoadmapStepTypeSubmitAdmissionDocuments, "Подать документы"}, {models.RoadmapStepTypeConfirmEnrollment, "Подтвердить зачисление"}, {models.RoadmapStepTypeLearnAtUniversity, "Учиться в выбранном вузе"}, {models.RoadmapStepTypeEmployerExperience, "Получить практический опыт у работодателя"}, {models.RoadmapStepTypeApplyToEmployer, "Подать заявку на работу в компанию"}}
 	for _, direction := range directions {
 		template := models.RoadmapTemplate{CareerDirectionID: direction.ID, Name: "Московский roadmap: " + direction.Name, Version: 1, IsActive: true}
 		if err := tx.Where("career_direction_id = ? AND version = ?", direction.ID, 1).Assign(template).FirstOrCreate(&template).Error; err != nil {

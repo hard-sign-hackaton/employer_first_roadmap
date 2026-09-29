@@ -42,6 +42,16 @@ type RoadmapService interface {
 	// SubmitEmployerApplication сохраняет подачу заявки только после завершённого практического шага.
 	SubmitEmployerApplication(ctx context.Context, userID int64, request dto.GetRoadmapRequest) (dto.EmployerApplicationResponse, error)
 
+	// RejectEmployerOpportunity сохраняет отказ по текущей возможности и возвращает альтернативы.
+	RejectEmployerOpportunity(ctx context.Context, userID int64, request dto.RejectEmployerOpportunityRequest) ([]dto.CompanyOpportunityResponse, error)
+
+	// SelectEmployerOpportunity назначает пользователю альтернативную возможность работодателя.
+	SelectEmployerOpportunity(ctx context.Context, userID int64, roadmapID, opportunityID int64) (dto.CompanyOpportunityResponse, error)
+
+	// ListAlternativeEmployerOpportunities возвращает ещё не использованные возможности
+	// того же работодателя для выбранного направления и региона вуза.
+	ListAlternativeEmployerOpportunities(ctx context.Context, userID int64, request dto.GetRoadmapRequest) ([]dto.CompanyOpportunityResponse, error)
+
 	// GetEmployerFeedback возвращает последний ответ работодателя и историю
 	// статусов по последней заявке пользователя.
 	GetEmployerFeedback(ctx context.Context, userID int64) (dto.EmployerApplicationResponse, error)

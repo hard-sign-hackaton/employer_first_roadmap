@@ -14,4 +14,5 @@ type CareerStore interface {
 	ListCareerDirectionsByCompany(ctx context.Context, companyID int64) ([]models.CareerDirection, error)
 	FindCareerDirectionByID(ctx context.Context, careerDirectionID int64) (models.CareerDirection, error)
 	FindActiveOpportunity(ctx context.Context, companyID, careerDirectionID int64, regionID int64) (models.CompanyOpportunity, error)
+	ListActiveOpportunities(ctx context.Context, companyID, careerDirectionID, regionID int64, excludedIDs []int64) ([]models.CompanyOpportunity, error)
 }

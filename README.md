@@ -114,7 +114,7 @@ docker compose logs -f efr_bot
 | `POSTGRES_PASSWORD` | рекомендуется изменить | `efr_local_password` | Пароль PostgreSQL. |
 | `APP_ENV` | нет | `development` | Значение `demo` включает demo-seed. |
 | `SEED_DEMO_DATA` | нет | `false` | Явно включает тестовый каталог. |
-| `SEED_MOSCOW_CATALOG` | нет | `false` | Включает проверенный московский каталог. |
+| `SEED_MAIN_CATALOG` | нет | `false` | Включает основной каталог. |
 | `DB_HOST`, `DB_PORT`, `DB_NAME` | только вне Compose | `localhost`, `5432`, `employer_first_roadmap` | Прямое подключение Go-приложения к PostgreSQL. |
 | `DB_USER`, `DB_PASSWORD`, `DB_SSLMODE` | только вне Compose | `efr`, `efr_local_password`, `disable` | Учётные данные и SSL-режим прямого подключения. |
 
@@ -247,14 +247,14 @@ docker compose -p efr_demo -f docker-compose.yml -f docker-compose.demo.yml down
 docker compose -p efr_demo -f docker-compose.yml -f docker-compose.demo.yml down -v
 ```
 
-Также есть изолированный московский каталог с официальными ссылками:
+Основной контур использует отдельный каталог с официальными ссылками:
 
 ```bash
-docker compose -p efr_moscow -f docker-compose.yml -f docker-compose.moscow.yml up --build -d
+docker compose -p efr_main -f docker-compose.yml -f docker-compose.main.yml up --build -d
 ```
 
-Он использует БД `employer_first_roadmap_moscow` и volume
-`postgres_moscow_data`; demo-seed в этом контуре выключен.
+Он использует БД `employer_first_roadmap_main` и volume
+`postgres_main_data`; demo-seed в этом контуре выключен.
 
 ## Пошаговый сценарий проверки
 
@@ -383,5 +383,5 @@ docker compose down -v
 ```
 
 Последняя команда необратимо удаляет volume текущего Compose-проекта. Для
-demo-, Moscow- и test-контуров всегда указывайте те же `-p` и `-f`, что были
+demo-, main- и test-контуров всегда указывайте те же `-p` и `-f`, что были
 использованы при запуске, чтобы не удалить данные другого контура.

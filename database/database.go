@@ -31,7 +31,7 @@ func Open(ctx context.Context) (*gorm.DB, error) {
 
 // AutoMigrate создаёт отсутствующие таблицы и добавляет безопасные изменения схемы.
 func AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(
+	if err := db.AutoMigrate(
 		&models.Region{},
 		&models.InterestTag{},
 		&models.ExamSubject{},
@@ -58,9 +58,16 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.RoadmapAdmissionApplication{},
 		&models.RoadmapEnrollmentChoice{},
 		&models.RoadmapEmployerApplication{},
+		&models.EmployerOpportunityAttempt{},
 		&models.EmployerFeedback{},
 		&models.RoadmapReminderDelivery{},
-	)
+	); err != nil {
+		return err
+	}
+	// До появления отдельных попыток feedback был связан внешним ключом с
+	// единственной legacy-заявкой roadmap. Новая модель допускает несколько
+	// попыток, поэтому эта старая связь больше не должна блокировать запись.
+	return db.Exec("ALTER TABLE employer_feedbacks DROP CONSTRAINT IF EXISTS fk_roadmap_employer_applications_feedbacks").Error
 }
 
 func dsnFromEnv() string {

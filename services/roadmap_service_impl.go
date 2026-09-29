@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"efr_bot/dto"
 	"efr_bot/models"
 	"efr_bot/services/ports"
+	"gorm.io/gorm"
 )
 
 // roadmapService создаёт и обновляет персональные roadmap по шаблонам направлений.
@@ -181,17 +183,13 @@ func (s *roadmapService) GetEmployerOpportunity(ctx context.Context, userID int6
 	if opportunity == nil {
 		return dto.CompanyOpportunityResponse{}, fmt.Errorf("no employer opportunity is configured for the selected program")
 	}
-	return dto.CompanyOpportunityResponse{
-		ID:                opportunity.ID,
-		CompanyName:       opportunity.Company.Name,
-		Type:              opportunity.Type,
-		Name:              opportunity.Name,
-		Description:       opportunity.Description,
-		URL:               opportunity.URL,
-		CompanyWebsiteURL: opportunity.Company.WebsiteURL,
-		MinStudyYear:      opportunity.MinStudyYear,
-		IsAvailable:       opportunity.IsActive,
-	}, nil
+	response := companyOpportunityResponse(*opportunity)
+	if attempt, attemptErr := s.roadmaps.FindEmployerOpportunityAttempt(ctx, roadmap.ID, opportunity.ID); attemptErr == nil {
+		response.AttemptStatus = attempt.Status
+	} else if !errors.Is(attemptErr, gorm.ErrRecordNotFound) {
+		return dto.CompanyOpportunityResponse{}, fmt.Errorf("find employer opportunity attempt: %w", attemptErr)
+	}
+	return response, nil
 }
 
 func (s *roadmapService) SubmitEmployerApplication(ctx context.Context, userID int64, request dto.GetRoadmapRequest) (dto.EmployerApplicationResponse, error) {
@@ -205,40 +203,176 @@ func (s *roadmapService) SubmitEmployerApplication(ctx context.Context, userID i
 	if roadmap.EnrollmentChoice == nil || roadmap.EnrollmentChoice.Status != models.EnrollmentStatusChosen {
 		return dto.EmployerApplicationResponse{}, fmt.Errorf("an enrolled education program is required before applying to employer")
 	}
-	var opportunityID int64
-	for _, step := range roadmap.Steps {
-		if step.StepType == models.RoadmapStepTypeEmployerExperience && step.CompanyOpportunityID != nil {
-			opportunityID = *step.CompanyOpportunityID
-		}
-	}
-	if opportunityID == 0 {
+	opportunity, err := currentEmployerOpportunity(roadmap)
+	if err != nil {
 		return dto.EmployerApplicationResponse{}, fmt.Errorf("an employer opportunity is not selected yet")
 	}
-	saved, err := s.roadmaps.SaveEmployerApplication(ctx, models.RoadmapEmployerApplication{RoadmapID: roadmap.ID, CompanyOpportunityID: opportunityID, Status: "submitted", SubmittedAt: time.Now().UTC()})
+	attempt, findErr := s.roadmaps.FindEmployerOpportunityAttempt(ctx, roadmap.ID, opportunity.ID)
+	if findErr == nil {
+		return employerOpportunityAttemptResponse(attempt), nil
+	}
+	if !errors.Is(findErr, gorm.ErrRecordNotFound) {
+		return dto.EmployerApplicationResponse{}, fmt.Errorf("find employer opportunity attempt: %w", findErr)
+	}
+	attempt, err = s.roadmaps.CreateEmployerOpportunityAttempt(ctx, models.EmployerOpportunityAttempt{
+		RoadmapID:            roadmap.ID,
+		CompanyOpportunityID: opportunity.ID,
+		Status:               "submitted",
+		SubmittedAt:          time.Now().UTC(),
+	})
 	if err != nil {
 		return dto.EmployerApplicationResponse{}, fmt.Errorf("save employer application: %w", err)
 	}
-	return dto.EmployerApplicationResponse{RoadmapID: saved.RoadmapID, CompanyOpportunityID: saved.CompanyOpportunityID, Status: saved.Status}, nil
+	return employerOpportunityAttemptResponse(attempt), nil
 }
 
 func (s *roadmapService) GetEmployerFeedback(ctx context.Context, userID int64) (dto.EmployerApplicationResponse, error) {
-	application, err := s.roadmaps.FindLatestEmployerApplicationByUserID(ctx, userID)
+	attempts, err := s.roadmaps.ListEmployerOpportunityAttemptsByUserID(ctx, userID)
 	if err != nil {
 		return dto.EmployerApplicationResponse{}, fmt.Errorf("find employer application: %w", err)
 	}
-	return employerApplicationResponse(application), nil
+	if len(attempts) == 0 {
+		return dto.EmployerApplicationResponse{}, gorm.ErrRecordNotFound
+	}
+	return employerOpportunityAttemptResponse(attempts[0]), nil
 }
 
 func (s *roadmapService) ListEmployerApplications(ctx context.Context, userID int64) ([]dto.EmployerApplicationResponse, error) {
-	applications, err := s.roadmaps.ListEmployerApplicationsByUserID(ctx, userID)
+	attempts, err := s.roadmaps.ListEmployerOpportunityAttemptsByUserID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list employer applications: %w", err)
 	}
-	result := make([]dto.EmployerApplicationResponse, 0, len(applications))
-	for _, application := range applications {
-		result = append(result, employerApplicationResponse(application))
+	result := make([]dto.EmployerApplicationResponse, 0, len(attempts))
+	for _, attempt := range attempts {
+		result = append(result, employerOpportunityAttemptResponse(attempt))
 	}
 	return result, nil
+}
+
+func (s *roadmapService) RejectEmployerOpportunity(ctx context.Context, userID int64, request dto.RejectEmployerOpportunityRequest) ([]dto.CompanyOpportunityResponse, error) {
+	roadmap, err := s.roadmaps.FindRoadmapByID(ctx, userID, request.RoadmapID)
+	if err != nil {
+		return nil, fmt.Errorf("find roadmap: %w", err)
+	}
+	opportunity, err := currentEmployerOpportunity(roadmap)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	attempt, findErr := s.roadmaps.FindEmployerOpportunityAttempt(ctx, roadmap.ID, opportunity.ID)
+	if errors.Is(findErr, gorm.ErrRecordNotFound) {
+		attempt, err = s.roadmaps.CreateEmployerOpportunityAttempt(ctx, models.EmployerOpportunityAttempt{RoadmapID: roadmap.ID, CompanyOpportunityID: opportunity.ID, Status: "rejected", SubmittedAt: now, DecidedAt: &now})
+	} else if findErr == nil {
+		attempt.Status, attempt.DecidedAt = "rejected", &now
+		attempt, err = s.roadmaps.UpdateEmployerOpportunityAttempt(ctx, attempt)
+	} else {
+		err = findErr
+	}
+	if err != nil {
+		return nil, fmt.Errorf("save rejected employer opportunity: %w", err)
+	}
+	_ = attempt
+	return s.alternativeEmployerOpportunities(ctx, roadmap)
+}
+
+func (s *roadmapService) SelectEmployerOpportunity(ctx context.Context, userID int64, roadmapID, opportunityID int64) (dto.CompanyOpportunityResponse, error) {
+	roadmap, err := s.roadmaps.FindRoadmapByID(ctx, userID, roadmapID)
+	if err != nil {
+		return dto.CompanyOpportunityResponse{}, fmt.Errorf("find roadmap: %w", err)
+	}
+	alternatives, err := s.alternativeEmployerOpportunities(ctx, roadmap)
+	if err != nil {
+		return dto.CompanyOpportunityResponse{}, err
+	}
+	for _, alternative := range alternatives {
+		if alternative.ID == opportunityID {
+			if err := s.replaceEmployerOpportunity(ctx, roadmap, opportunityID); err != nil {
+				return dto.CompanyOpportunityResponse{}, err
+			}
+			return alternative, nil
+		}
+	}
+	return dto.CompanyOpportunityResponse{}, fmt.Errorf("selected employer opportunity is unavailable")
+}
+
+func (s *roadmapService) ListAlternativeEmployerOpportunities(ctx context.Context, userID int64, request dto.GetRoadmapRequest) ([]dto.CompanyOpportunityResponse, error) {
+	roadmap, err := s.roadmaps.FindRoadmapByID(ctx, userID, request.RoadmapID)
+	if err != nil {
+		return nil, fmt.Errorf("find roadmap: %w", err)
+	}
+	return s.alternativeEmployerOpportunities(ctx, roadmap)
+}
+
+func currentEmployerOpportunity(roadmap models.Roadmap) (models.CompanyOpportunity, error) {
+	var completed *models.CompanyOpportunity
+	for _, step := range roadmap.Steps {
+		if step.StepType == models.RoadmapStepTypeEmployerExperience && step.CompanyOpportunity != nil {
+			if step.Status == models.RoadmapStepStatusActive || step.Status == models.RoadmapStepStatusPending {
+				return *step.CompanyOpportunity, nil
+			}
+			completed = step.CompanyOpportunity
+		}
+	}
+	if completed != nil {
+		return *completed, nil
+	}
+	return models.CompanyOpportunity{}, gorm.ErrRecordNotFound
+}
+
+func (s *roadmapService) alternativeEmployerOpportunities(ctx context.Context, roadmap models.Roadmap) ([]dto.CompanyOpportunityResponse, error) {
+	if roadmap.EnrollmentChoice == nil || roadmap.EnrollmentChoice.AdmissionApplication == nil {
+		return nil, fmt.Errorf("an enrolled education program is required")
+	}
+	attempts, err := s.roadmaps.ListEmployerOpportunityAttempts(ctx, roadmap.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list employer opportunity attempts: %w", err)
+	}
+	excluded := make([]int64, 0, len(attempts))
+	for _, attempt := range attempts {
+		excluded = append(excluded, attempt.CompanyOpportunityID)
+	}
+	direction := roadmap.UserGoal.CareerDirection
+	regionID := roadmap.EnrollmentChoice.AdmissionApplication.EducationProgram.University.RegionID
+	opportunities, err := s.careers.ListActiveOpportunities(ctx, direction.CompanyID, direction.ID, regionID, excluded)
+	if err != nil {
+		return nil, fmt.Errorf("list alternative employer opportunities: %w", err)
+	}
+	result := make([]dto.CompanyOpportunityResponse, 0, len(opportunities))
+	for _, opportunity := range opportunities {
+		result = append(result, companyOpportunityResponse(opportunity))
+	}
+	return result, nil
+}
+
+func (s *roadmapService) replaceEmployerOpportunity(ctx context.Context, roadmap models.Roadmap, opportunityID int64) error {
+	attempts, err := s.roadmaps.ListEmployerOpportunityAttempts(ctx, roadmap.ID)
+	if err != nil {
+		return fmt.Errorf("list employer opportunity attempts: %w", err)
+	}
+	excluded := make([]int64, 0, len(attempts))
+	for _, attempt := range attempts {
+		excluded = append(excluded, attempt.CompanyOpportunityID)
+	}
+	direction := roadmap.UserGoal.CareerDirection
+	regionID := roadmap.EnrollmentChoice.AdmissionApplication.EducationProgram.University.RegionID
+	opportunities, err := s.careers.ListActiveOpportunities(ctx, direction.CompanyID, direction.ID, regionID, excluded)
+	if err != nil {
+		return fmt.Errorf("list employer opportunities: %w", err)
+	}
+	var selected *models.CompanyOpportunity
+	for index := range opportunities {
+		if opportunities[index].ID == opportunityID {
+			selected = &opportunities[index]
+			break
+		}
+	}
+	if selected == nil {
+		return fmt.Errorf("selected employer opportunity is unavailable")
+	}
+	if err := s.roadmaps.UpdateEmployerOpportunity(ctx, roadmap.ID, selected.ID, selected.Name, selected.Description, selected.URL, selected.MinStudyYear); err != nil {
+		return fmt.Errorf("replace employer opportunity: %w", err)
+	}
+	return nil
 }
 
 func roadmapSteps(template models.RoadmapTemplate) []models.RoadmapStep {
@@ -278,7 +412,16 @@ func roadmapResponse(roadmap models.Roadmap) dto.RoadmapResponse {
 		response := enrollmentChoiceResponse(*roadmap.EnrollmentChoice)
 		enrollmentChoice = &response
 	}
-	if roadmap.EmployerApplication != nil {
+	if len(roadmap.EmployerAttempts) > 0 {
+		latest := roadmap.EmployerAttempts[0]
+		for _, attempt := range roadmap.EmployerAttempts[1:] {
+			if attempt.SubmittedAt.After(latest.SubmittedAt) || (attempt.SubmittedAt.Equal(latest.SubmittedAt) && attempt.ID > latest.ID) {
+				latest = attempt
+			}
+		}
+		response := employerOpportunityAttemptResponse(latest)
+		employerApplication = &response
+	} else if roadmap.EmployerApplication != nil {
 		response := employerApplicationResponse(*roadmap.EmployerApplication)
 		employerApplication = &response
 	}
@@ -286,6 +429,8 @@ func roadmapResponse(roadmap models.Roadmap) dto.RoadmapResponse {
 		ID:     roadmap.ID,
 		GoalID: roadmap.UserGoalID,
 		Goal: dto.RoadmapGoalResponse{
+			CompanyID:           roadmap.UserGoal.CareerDirection.CompanyID,
+			CareerDirectionID:   roadmap.UserGoal.CareerDirectionID,
 			CompanyName:         roadmap.UserGoal.CareerDirection.Company.Name,
 			CareerDirectionName: roadmap.UserGoal.CareerDirection.Name,
 			TargetAdmissionYear: roadmap.UserGoal.TargetAdmissionYear,
@@ -305,17 +450,42 @@ func employerApplicationResponse(application models.RoadmapEmployerApplication) 
 		CompanyName:          application.CompanyOpportunity.Company.Name,
 		OpportunityName:      application.CompanyOpportunity.Name,
 		Status:               application.Status,
-		History:              make([]dto.EmployerFeedbackResponse, 0, len(application.Feedbacks)),
+		History:              []dto.EmployerFeedbackResponse{},
 	}
-	for _, feedback := range application.Feedbacks {
+	return response
+}
+
+func employerOpportunityAttemptResponse(attempt models.EmployerOpportunityAttempt) dto.EmployerApplicationResponse {
+	response := dto.EmployerApplicationResponse{
+		ID:                   attempt.ID,
+		RoadmapID:            attempt.RoadmapID,
+		CompanyOpportunityID: attempt.CompanyOpportunityID,
+		CompanyName:          attempt.CompanyOpportunity.Company.Name,
+		OpportunityName:      attempt.CompanyOpportunity.Name,
+		Status:               attempt.Status,
+		History:              make([]dto.EmployerFeedbackResponse, 0, len(attempt.Feedbacks)),
+	}
+	for _, feedback := range attempt.Feedbacks {
 		response.History = append(response.History, dto.EmployerFeedbackResponse{Status: feedback.Status, Message: feedback.Message, Contact: feedback.Contact, CreatedAt: feedback.CreatedAt})
-		response.Status = feedback.Status
-		response.Message = feedback.Message
-		response.Contact = feedback.Contact
+		response.Status, response.Message, response.Contact = feedback.Status, feedback.Message, feedback.Contact
 		updatedAt := feedback.CreatedAt
 		response.UpdatedAt = &updatedAt
 	}
 	return response
+}
+
+func companyOpportunityResponse(opportunity models.CompanyOpportunity) dto.CompanyOpportunityResponse {
+	return dto.CompanyOpportunityResponse{
+		ID:                opportunity.ID,
+		CompanyName:       opportunity.Company.Name,
+		Type:              opportunity.Type,
+		Name:              opportunity.Name,
+		Description:       opportunity.Description,
+		URL:               opportunity.URL,
+		CompanyWebsiteURL: opportunity.Company.WebsiteURL,
+		MinStudyYear:      opportunity.MinStudyYear,
+		IsAvailable:       opportunity.IsActive,
+	}
 }
 
 func roadmapStepResponse(step models.RoadmapStep) dto.RoadmapStepResponse {

@@ -13,17 +13,29 @@ import (
 )
 
 type accountContextKey struct{}
+
+// FeedbackNotifier отправляет пользователю уведомление о новом ответе.
+// Ошибка доставки не отменяет сохранённый feedback.
+type FeedbackNotifier interface {
+	Send(ctx context.Context, userID int64, text string) error
+}
+
 type Handler struct {
 	store         *Store
 	allowedOrigin string
+	notifier      FeedbackNotifier
 }
 
 func NewHandler(store *Store, bootstrapToken string, origins ...string) http.Handler {
+	return NewHandlerWithNotifier(store, bootstrapToken, nil, origins...)
+}
+
+func NewHandlerWithNotifier(store *Store, bootstrapToken string, notifier FeedbackNotifier, origins ...string) http.Handler {
 	origin := ""
 	if len(origins) > 0 {
 		origin = strings.TrimSpace(origins[0])
 	}
-	h := &Handler{store: store, allowedOrigin: origin}
+	h := &Handler{store: store, allowedOrigin: origin, notifier: notifier}
 	if store != nil {
 		if err := store.BootstrapAdmin(context.Background(), bootstrapToken); err != nil {
 			panic(fmt.Sprintf("bootstrap API admin: %v", err))
@@ -365,7 +377,33 @@ func (h *Handler) saveFeedback(w http.ResponseWriter, r *http.Request) {
 		writeError(w, e)
 		return
 	}
-	writeJSON(w, 200, out)
+	if h.notifier != nil {
+		_ = h.notifier.Send(r.Context(), out.Notification.UserID, feedbackNotificationText(out.Notification))
+	}
+	writeJSON(w, 200, out.Feedback)
+}
+
+func feedbackNotificationText(notification FeedbackNotification) string {
+	text := fmt.Sprintf("Работодатель «%s» оставил ответ по возможности «%s».\nСтатус: %s.", notification.CompanyName, notification.OpportunityName, feedbackStatusLabel(notification.Status))
+	if notification.Message != "" {
+		text += "\nСообщение: " + notification.Message
+	}
+	return text + "\nОткройте /feedback, чтобы посмотреть историю ответов."
+}
+
+func feedbackStatusLabel(status string) string {
+	switch status {
+	case "under_review":
+		return "заявка рассматривается"
+	case "interview":
+		return "приглашение на интервью"
+	case "accepted":
+		return "заявка принята"
+	case "rejected":
+		return "заявка отклонена"
+	default:
+		return status
+	}
 }
 func (h *Handler) listAccounts(w http.ResponseWriter, r *http.Request) {
 	x, e := h.store.ListAccounts(r.Context())

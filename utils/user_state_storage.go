@@ -54,6 +54,8 @@ type SmallSurveyData struct {
 	AdmissionApplicationLines              []string
 	SelectedProgramID                      int64
 	SelectedProgramLabel                   string
+	EmployerOpportunityIDs                 []int64
+	EmployerOpportunityLines               []string
 }
 
 func ResetSmallSurvey(id int64) { mu.Lock(); SmallSurveyStorage[id] = &SmallSurveyData{}; mu.Unlock() }

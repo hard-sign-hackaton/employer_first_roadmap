@@ -41,7 +41,7 @@ func (r *GormRoadmapRepository) FindActiveRoadmapByUserID(ctx context.Context, u
 	err := r.roadmapDetails(r.db.WithContext(ctx)).
 		Joins("JOIN user_goals ON user_goals.id = roadmaps.user_goal_id").
 		Where("user_goals.user_profile_id = ? AND roadmaps.status = ?", userID, models.RoadmapStatusActive).
-		Order("roadmaps.created_at DESC").
+		Order("roadmaps.created_at DESC, roadmaps.id DESC").
 		First(&roadmap).Error
 	return roadmap, err
 }
@@ -183,6 +183,28 @@ func (r *GormRoadmapRepository) ReplaceUncompletedSteps(ctx context.Context, roa
 	return savedSteps, err
 }
 
+// UpdateEmployerOpportunity меняет только ещё не пройденный практический шаг,
+// не пересоздавая остальные шаги roadmap и их историю.
+func (r *GormRoadmapRepository) UpdateEmployerOpportunity(ctx context.Context, roadmapID, opportunityID int64, title, description, actionURL string, minStudyYear int16) error {
+	result := r.db.WithContext(ctx).
+		Model(&models.RoadmapStep{}).
+		Where("roadmap_id = ? AND step_type = ? AND status IN ?", roadmapID, models.RoadmapStepTypeEmployerExperience, []string{models.RoadmapStepStatusPending, models.RoadmapStepStatusActive}).
+		Updates(map[string]any{
+			"company_opportunity_id": opportunityID,
+			"title":                  title,
+			"description":            description,
+			"action_url":             actionURL,
+			"target_study_year":      minStudyYear,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 func (r *GormRoadmapRepository) ReplaceAdmissionApplications(ctx context.Context, roadmapID int64, applications []models.RoadmapAdmissionApplication) ([]models.RoadmapAdmissionApplication, error) {
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("roadmap_id = ?", roadmapID).Delete(&models.RoadmapAdmissionApplication{}).Error; err != nil {
@@ -223,6 +245,50 @@ func (r *GormRoadmapRepository) SaveEmployerApplication(ctx context.Context, app
 	return application, err
 }
 
+func (r *GormRoadmapRepository) CreateEmployerOpportunityAttempt(ctx context.Context, attempt models.EmployerOpportunityAttempt) (models.EmployerOpportunityAttempt, error) {
+	err := r.db.WithContext(ctx).Create(&attempt).Error
+	return attempt, err
+}
+
+func (r *GormRoadmapRepository) FindEmployerOpportunityAttempt(ctx context.Context, roadmapID, opportunityID int64) (models.EmployerOpportunityAttempt, error) {
+	var attempt models.EmployerOpportunityAttempt
+	err := r.db.WithContext(ctx).
+		Where("roadmap_id = ? AND company_opportunity_id = ?", roadmapID, opportunityID).
+		Preload("CompanyOpportunity.Company").
+		Preload("Feedbacks", func(db *gorm.DB) *gorm.DB { return db.Order("created_at ASC, id ASC") }).
+		First(&attempt).Error
+	return attempt, err
+}
+
+func (r *GormRoadmapRepository) UpdateEmployerOpportunityAttempt(ctx context.Context, attempt models.EmployerOpportunityAttempt) (models.EmployerOpportunityAttempt, error) {
+	err := r.db.WithContext(ctx).Save(&attempt).Error
+	return attempt, err
+}
+
+func (r *GormRoadmapRepository) ListEmployerOpportunityAttempts(ctx context.Context, roadmapID int64) ([]models.EmployerOpportunityAttempt, error) {
+	var attempts []models.EmployerOpportunityAttempt
+	err := r.db.WithContext(ctx).
+		Where("roadmap_id = ?", roadmapID).
+		Preload("CompanyOpportunity.Company").
+		Preload("Feedbacks", func(db *gorm.DB) *gorm.DB { return db.Order("created_at ASC, id ASC") }).
+		Order("submitted_at ASC, id ASC").
+		Find(&attempts).Error
+	return attempts, err
+}
+
+func (r *GormRoadmapRepository) ListEmployerOpportunityAttemptsByUserID(ctx context.Context, userID int64) ([]models.EmployerOpportunityAttempt, error) {
+	var attempts []models.EmployerOpportunityAttempt
+	err := r.db.WithContext(ctx).
+		Joins("JOIN roadmaps ON roadmaps.id = employer_opportunity_attempts.roadmap_id").
+		Joins("JOIN user_goals ON user_goals.id = roadmaps.user_goal_id").
+		Where("user_goals.user_profile_id = ?", userID).
+		Preload("CompanyOpportunity.Company").
+		Preload("Feedbacks", func(db *gorm.DB) *gorm.DB { return db.Order("created_at ASC, id ASC") }).
+		Order("employer_opportunity_attempts.submitted_at DESC, employer_opportunity_attempts.id DESC").
+		Find(&attempts).Error
+	return attempts, err
+}
+
 func (r *GormRoadmapRepository) FindLatestEmployerApplicationByUserID(ctx context.Context, userID int64) (models.RoadmapEmployerApplication, error) {
 	var application models.RoadmapEmployerApplication
 	err := r.db.WithContext(ctx).
@@ -230,7 +296,6 @@ func (r *GormRoadmapRepository) FindLatestEmployerApplicationByUserID(ctx contex
 		Joins("JOIN user_goals ON user_goals.id = roadmaps.user_goal_id").
 		Where("user_goals.user_profile_id = ?", userID).
 		Preload("CompanyOpportunity.Company").
-		Preload("Feedbacks", func(db *gorm.DB) *gorm.DB { return db.Order("created_at ASC, id ASC") }).
 		Order("roadmap_employer_applications.submitted_at DESC").
 		First(&application).Error
 	return application, err
@@ -243,7 +308,6 @@ func (r *GormRoadmapRepository) ListEmployerApplicationsByUserID(ctx context.Con
 		Joins("JOIN user_goals ON user_goals.id = roadmaps.user_goal_id").
 		Where("user_goals.user_profile_id = ?", userID).
 		Preload("CompanyOpportunity.Company").
-		Preload("Feedbacks", func(db *gorm.DB) *gorm.DB { return db.Order("created_at ASC, id ASC") }).
 		Order("roadmap_employer_applications.submitted_at DESC").
 		Find(&applications).Error
 	return applications, err
@@ -278,6 +342,9 @@ func (r *GormRoadmapRepository) ResetUserData(ctx context.Context, userID int64)
 		}
 		if len(roadmapIDs) > 0 {
 			if err := tx.Where("roadmap_id IN ?", roadmapIDs).Delete(&models.EmployerFeedback{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("roadmap_id IN ?", roadmapIDs).Delete(&models.EmployerOpportunityAttempt{}).Error; err != nil {
 				return err
 			}
 			if err := tx.Where("roadmap_id IN ?", roadmapIDs).Delete(&models.RoadmapEmployerApplication{}).Error; err != nil {
@@ -327,5 +394,6 @@ func (r *GormRoadmapRepository) roadmapDetails(query *gorm.DB) *gorm.DB {
 		Preload("AdmissionApplications.EducationProgram.University").
 		Preload("EnrollmentChoice.AdmissionApplication.EducationProgram.University").
 		Preload("EmployerApplication.CompanyOpportunity.Company").
-		Preload("EmployerApplication.Feedbacks", func(db *gorm.DB) *gorm.DB { return db.Order("created_at ASC, id ASC") })
+		Preload("EmployerAttempts.CompanyOpportunity.Company").
+		Preload("EmployerAttempts.Feedbacks", func(db *gorm.DB) *gorm.DB { return db.Order("created_at ASC, id ASC") })
 }

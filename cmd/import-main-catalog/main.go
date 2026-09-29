@@ -1,4 +1,4 @@
-// import-moscow-catalog loads the reviewed real catalog into an explicitly
+// import-main-catalog loads the reviewed main catalog into an explicitly
 // selected empty database. It refuses to mix it with an existing catalog.
 package main
 
@@ -26,10 +26,10 @@ func main() {
 	if err := ensureCatalogEmpty(db); err != nil {
 		log.Fatal(err)
 	}
-	if err := database.SeedMoscowCatalog(db); err != nil {
-		log.Fatalf("import Moscow catalog: %v", err)
+	if err := database.SeedMainCatalog(db); err != nil {
+		log.Fatalf("import main catalog: %v", err)
 	}
-	log.Print("Московский каталог импортирован")
+	log.Print("Основной каталог импортирован")
 }
 
 func ensureCatalogEmpty(db *gorm.DB) error {

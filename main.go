@@ -41,9 +41,9 @@ func main() {
 			log.Fatalf("Не удалось заполнить демонстрационные данные: %v", err)
 		}
 	}
-	if database.MoscowCatalogSeedEnabled() {
-		if err := database.SeedMoscowCatalog(db); err != nil {
-			log.Fatalf("Не удалось заполнить московский каталог: %v", err)
+	if database.MainCatalogSeedEnabled() {
+		if err := database.SeedMainCatalog(db); err != nil {
+			log.Fatalf("Не удалось заполнить основной каталог: %v", err)
 		}
 	}
 
@@ -84,7 +84,7 @@ func main() {
 	}
 	apiServer := &http.Server{
 		Addr:              ":" + apiPort,
-		Handler:           employerapi.NewHandler(employerapi.NewStore(db), os.Getenv("ADMIN_API_TOKEN"), os.Getenv("EMPLOYER_ALLOWED_ORIGIN")),
+		Handler:           employerapi.NewHandlerWithNotifier(employerapi.NewStore(db), os.Getenv("ADMIN_API_TOKEN"), reminders.NewMaxSender(bot.Client()), os.Getenv("EMPLOYER_ALLOWED_ORIGIN")),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,

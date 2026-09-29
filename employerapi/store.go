@@ -635,6 +635,7 @@ func (s *Store) ReferenceData(c context.Context) (ReferenceDataResponse, error) 
 
 func (s *Store) ListEmployerApplications(c context.Context, companyID int64) ([]EmployerApplicationListItem, error) {
 	type row struct {
+		ID              int64
 		RoadmapID       int64
 		UserID          int64
 		Grade           int16
@@ -643,30 +644,54 @@ func (s *Store) ListEmployerApplications(c context.Context, companyID int64) ([]
 		OpportunityID   int64
 		OpportunityName string
 		SubmittedAt     time.Time
+		Status          string
 	}
 	var rows []row
-	e := s.db.WithContext(c).Table("roadmap_employer_applications AS a").Select(`a.roadmap_id, g.user_profile_id AS user_id, u.grade, r.name AS user_region, d.name AS career_direction, o.id AS opportunity_id, o.name AS opportunity_name, a.submitted_at`).Joins("JOIN roadmaps rm ON rm.id=a.roadmap_id").Joins("JOIN user_goals g ON g.id=rm.user_goal_id").Joins("JOIN user_profiles u ON u.id=g.user_profile_id").Joins("JOIN regions r ON r.id=u.region_id").Joins("JOIN career_directions d ON d.id=g.career_direction_id").Joins("JOIN company_opportunities o ON o.id=a.company_opportunity_id").Where("d.company_id=?", companyID).Scan(&rows).Error
+	e := s.db.WithContext(c).Table("employer_opportunity_attempts AS a").Select(`a.id, a.roadmap_id, g.user_profile_id AS user_id, u.grade, r.name AS user_region, d.name AS career_direction, o.id AS opportunity_id, o.name AS opportunity_name, a.submitted_at, a.status`).Joins("JOIN roadmaps rm ON rm.id=a.roadmap_id").Joins("JOIN user_goals g ON g.id=rm.user_goal_id").Joins("JOIN user_profiles u ON u.id=g.user_profile_id").Joins("JOIN regions r ON r.id=u.region_id").Joins("JOIN career_directions d ON d.id=g.career_direction_id").Joins("JOIN company_opportunities o ON o.id=a.company_opportunity_id").Where("d.company_id=?", companyID).Order("a.submitted_at DESC, a.id DESC").Scan(&rows).Error
 	if e != nil {
 		return nil, e
 	}
 	out := make([]EmployerApplicationListItem, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, EmployerApplicationListItem{RoadmapID: x.RoadmapID, UserID: x.UserID, Grade: x.Grade, UserRegion: x.UserRegion, CareerDirection: x.CareerDirection, OpportunityID: x.OpportunityID, OpportunityName: x.OpportunityName, SubmittedAt: x.SubmittedAt, Status: "submitted", FeedbackHistory: []EmployerFeedbackView{}})
+		item := EmployerApplicationListItem{ID: x.ID, RoadmapID: x.RoadmapID, UserID: x.UserID, Grade: x.Grade, UserRegion: x.UserRegion, CareerDirection: x.CareerDirection, OpportunityID: x.OpportunityID, OpportunityName: x.OpportunityName, SubmittedAt: x.SubmittedAt, Status: x.Status, FeedbackHistory: []EmployerFeedbackView{}}
+		var feedbacks []models.EmployerFeedback
+		if err := s.db.WithContext(c).Where("employer_opportunity_attempt_id = ?", x.ID).Order("created_at ASC, id ASC").Find(&feedbacks).Error; err != nil {
+			return nil, err
+		}
+		for _, feedback := range feedbacks {
+			view := EmployerFeedbackView{ID: feedback.ID, Status: feedback.Status, Message: feedback.Message, Contact: feedback.Contact, CreatedAt: feedback.CreatedAt}
+			item.FeedbackHistory = append(item.FeedbackHistory, view)
+			item.Status, item.Message, item.Contact = feedback.Status, feedback.Message, feedback.Contact
+		}
+		out = append(out, item)
 	}
 	return out, nil
 }
-func (s *Store) SaveEmployerFeedback(c context.Context, companyID, roadmapID int64, in EmployerFeedbackInput) (EmployerFeedbackView, error) {
-	var n int64
-	e := s.db.WithContext(c).Table("roadmap_employer_applications AS a").Joins("JOIN roadmaps rm ON rm.id=a.roadmap_id").Joins("JOIN user_goals g ON g.id=rm.user_goal_id").Joins("JOIN career_directions d ON d.id=g.career_direction_id").Where("a.roadmap_id=? AND d.company_id=?", roadmapID, companyID).Count(&n).Error
+
+type SaveEmployerFeedbackResult struct {
+	Feedback     EmployerFeedbackView
+	Notification FeedbackNotification
+}
+
+func (s *Store) SaveEmployerFeedback(c context.Context, companyID, attemptID int64, in EmployerFeedbackInput) (SaveEmployerFeedbackResult, error) {
+	type row struct {
+		RoadmapID       int64
+		UserID          int64
+		CompanyName     string
+		OpportunityName string
+	}
+	var application row
+	e := s.db.WithContext(c).Table("employer_opportunity_attempts AS a").Select("a.roadmap_id, g.user_profile_id AS user_id, c.name AS company_name, o.name AS opportunity_name").Joins("JOIN roadmaps rm ON rm.id=a.roadmap_id").Joins("JOIN user_goals g ON g.id=rm.user_goal_id").Joins("JOIN career_directions d ON d.id=g.career_direction_id").Joins("JOIN companies c ON c.id=d.company_id").Joins("JOIN company_opportunities o ON o.id=a.company_opportunity_id").Where("a.id=? AND d.company_id=?", attemptID, companyID).First(&application).Error
+	if errors.Is(e, gorm.ErrRecordNotFound) {
+		return SaveEmployerFeedbackResult{}, fmt.Errorf("%w: application", ErrNotFound)
+	}
 	if e != nil {
-		return EmployerFeedbackView{}, e
+		return SaveEmployerFeedbackResult{}, e
 	}
-	if n == 0 {
-		return EmployerFeedbackView{}, fmt.Errorf("%w: application", ErrNotFound)
-	}
-	f := models.EmployerFeedback{RoadmapID: roadmapID, Status: in.Status, Message: strings.TrimSpace(in.Message), Contact: strings.TrimSpace(in.Contact), CreatedAt: time.Now().UTC()}
+	f := models.EmployerFeedback{RoadmapID: application.RoadmapID, EmployerOpportunityAttemptID: &attemptID, Status: in.Status, Message: strings.TrimSpace(in.Message), Contact: strings.TrimSpace(in.Contact), CreatedAt: time.Now().UTC()}
 	if e = s.db.WithContext(c).Create(&f).Error; e != nil {
-		return EmployerFeedbackView{}, e
+		return SaveEmployerFeedbackResult{}, e
 	}
-	return EmployerFeedbackView{ID: f.ID, Status: f.Status, Message: f.Message, Contact: f.Contact, CreatedAt: f.CreatedAt}, nil
+	view := EmployerFeedbackView{ID: f.ID, Status: f.Status, Message: f.Message, Contact: f.Contact, CreatedAt: f.CreatedAt}
+	return SaveEmployerFeedbackResult{Feedback: view, Notification: FeedbackNotification{UserID: application.UserID, CompanyName: application.CompanyName, OpportunityName: application.OpportunityName, Status: f.Status, Message: f.Message}}, nil
 }

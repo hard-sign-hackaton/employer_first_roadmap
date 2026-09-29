@@ -57,7 +57,7 @@ func SendTestReminder(ctx maxbot.Context) error {
 func ShowEmployerFeedback(ctx maxbot.Context) error {
 	applications, err := app.Roadmap.ListEmployerApplications(context.Background(), ctx.Update().UserID)
 	if err != nil {
-		return ctx.Send("У вас пока нет заявки работодателю. Она появится после финального шага roadmap.")
+		return ctx.Send("У вас пока нет заявок работодателям. Заявка появится после отметки «Я отправил заявку» на стажировке, практике или другой возможности.")
 	}
 	if len(applications) == 0 {
 		return ctx.Send("У вас пока нет заявок работодателям.")

@@ -306,16 +306,19 @@ func showFullSurveyActivities(ctx maxbot.Context) error {
 	s.ActivityTagIDs = nil
 	s.ActivityTagNames = nil
 	keyboard := model.NewKeyboard()
+	lines := make([]string, 0, len(surveyActivityProfiles)+1)
 	for index, profile := range surveyActivityProfiles {
 		s.ActivityTagIDs = append(s.ActivityTagIDs, int64(index+1))
 		s.ActivityTagNames = append(s.ActivityTagNames, profile.Key)
-		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, profile.Label))
+		lines = append(lines, fmt.Sprintf("%d. %s", index+1, profile.Label))
+		keyboard.AddRow().AddMessage(numberedOptionLabel(index+1, profile.Label))
 	}
 	s.ActivityTagIDs = append(s.ActivityTagIDs, 0)
 	s.ActivityTagNames = append(s.ActivityTagNames, "unknown")
-	keyboard.AddRow().AddMessage(fmt.Sprintf("%d. Пока не знаю", len(s.ActivityTagIDs)))
+	lines = append(lines, fmt.Sprintf("%d. Пока не знаю", len(s.ActivityTagIDs)))
+	keyboard.AddRow().AddMessage(numberedOptionLabel(len(s.ActivityTagIDs), "Пока не знаю"))
 	utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingInterest)
-	return ctx.Send("Что вам интереснее всего делать? Это поможет подобрать направления, но не ограничит ваш выбор. Выберите один вариант:", maxbot.WithKeyboard(keyboard))
+	return ctx.Send("Что вам интереснее всего делать? Это поможет подобрать направления, но не ограничит ваш выбор. Выберите один вариант:\n\n"+strings.Join(lines, "\n\n")+"\n\nНажмите номер варианта.", maxbot.WithKeyboard(keyboard))
 }
 
 func showFullSurveySchoolSubjects(ctx maxbot.Context) error {
@@ -544,6 +547,13 @@ func ExamSubjectsDone(ctx maxbot.Context) error {
 			return ctx.Answer("Не удалось сохранить обновлённый набор ЕГЭ.")
 		}
 		_ = ctx.Answer(fmt.Sprintf("✓ Набор ЕГЭ обновлён: %d предмет(ов)", len(s.SelectedExamIDs)))
+		assessment, err := assessRoadmapExamSet(ctx)
+		if err != nil {
+			return ctx.Send("Не удалось проверить обновлённый набор ЕГЭ. Попробуйте позже.")
+		}
+		if assessment.Status != dto.TrajectoryPathStatusAvailable {
+			return showRoadmapExamPathResolution(ctx, assessment)
+		}
 		return showRoadmapExamChoice(ctx)
 	default:
 		return ctx.Answer("Этот выбор уже завершён. Начните заново командой /start.")
@@ -682,15 +692,19 @@ func showRecommendedCompanies(ctx maxbot.Context) error {
 	lines := make([]string, 0, len(companies))
 	for index, company := range companies {
 		s.CompanyIDs = append(s.CompanyIDs, company.ID)
-		explanation := ""
-		if len(company.Reasons) > 0 {
-			explanation = "\nПочему рекомендована: " + company.Reasons[0]
-		}
-		lines = append(lines, fmt.Sprintf("%d. %s\n%s%s", index+1, company.Name, company.Description, explanation))
-		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, company.Name))
+		lines = append(lines, recommendedCompanyLine(index+1, company))
+		keyboard.AddRow().AddMessage(catalogOptionButton(index+1, company.Name))
 	}
 	utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingCompany)
 	return ctx.Send("Подходящие компании подобраны по вашим интересам:\n"+strings.Join(lines, "\n")+"\n\nВыберите компанию:", maxbot.WithKeyboard(keyboard))
+}
+
+func numberedOptionLabel(number int, label string) string {
+	return fmt.Sprintf("%d. %s", number, label)
+}
+
+func recommendedCompanyLine(number int, company dto.RecommendedCompanyResponse) string {
+	return fmt.Sprintf("%d. %s\n%s", number, company.Name, company.Description)
 }
 
 func showBigDirections(ctx maxbot.Context) error {
@@ -714,7 +728,7 @@ func showBigDirections(ctx maxbot.Context) error {
 		s.DirectionIDs = append(s.DirectionIDs, direction.ID)
 		s.DirectionNames = append(s.DirectionNames, direction.Name)
 		lines = append(lines, fmt.Sprintf("%d. %s — %s", index+1, direction.Name, direction.Description))
-		keyboard.AddRow().AddMessage(fmt.Sprintf("%d. %s", index+1, direction.Name))
+		keyboard.AddRow().AddMessage(catalogOptionButton(index+1, direction.Name))
 	}
 	utils.UpdateUserStateStorage(id, models.UserStateBigSurveyWaitingDirection)
 	prefix := fmt.Sprintf("В компании «%s» вам подходят следующие карьерные направления.", s.CompanyName)

@@ -6,6 +6,7 @@ import (
 	. "efr_bot/models"
 	"efr_bot/utils"
 	"fmt"
+	"strings"
 
 	"github.com/max-messenger/max-bot-api-client-go/v2/model"
 	"github.com/max-messenger/maxbot"
@@ -31,9 +32,12 @@ func showSmallCompanies(ctx maxbot.Context) error {
 	s := utils.GetSmallSurvey(userID)
 	s.CompanyIDs = nil
 	kb := model.NewKeyboard()
+	lines := make([]string, 0, len(companies))
 	for i, c := range companies {
 		s.CompanyIDs = append(s.CompanyIDs, c.ID)
-		kb.AddRow().AddMessage(fmt.Sprintf("%d. %s", i+1, c.Name))
+		lines = append(lines, fmt.Sprintf("%d. %s — %s", i+1, c.Name, c.Description))
+		kb.AddRow().AddMessage(catalogOptionButton(i+1, c.Name))
 	}
-	return ctx.Send("1. Выберите компанию:", maxbot.WithKeyboard(kb))
+	kb.AddRow().AddMessage("Не знаю куда хочу")
+	return ctx.Send("1. Выберите компанию:\n\n"+strings.Join(lines, "\n\n")+"\n\nНажмите номер компании.", maxbot.WithKeyboard(kb))
 }

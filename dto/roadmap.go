@@ -29,6 +29,8 @@ type RoadmapResponse struct {
 
 // RoadmapGoalResponse — краткая цель, которая показывается при возвращении в roadmap.
 type RoadmapGoalResponse struct {
+	CompanyID           int64  `json:"company_id"`
+	CareerDirectionID   int64  `json:"career_direction_id"`
 	CompanyName         string `json:"company_name"`
 	CareerDirectionName string `json:"career_direction_name"`
 	TargetAdmissionYear int16  `json:"target_admission_year"`
@@ -72,10 +74,12 @@ type CompanyOpportunityResponse struct {
 	CompanyWebsiteURL string `json:"company_website_url,omitempty"`
 	MinStudyYear      int16  `json:"min_study_year"`
 	IsAvailable       bool   `json:"is_available"`
+	AttemptStatus     string `json:"attempt_status,omitempty"`
 }
 
 // EmployerApplicationResponse подтверждает отправку заявки работодателю.
 type EmployerApplicationResponse struct {
+	ID                   int64                      `json:"id"`
 	RoadmapID            int64                      `json:"roadmap_id"`
 	CompanyOpportunityID int64                      `json:"company_opportunity_id"`
 	CompanyName          string                     `json:"company_name,omitempty"`
@@ -85,6 +89,11 @@ type EmployerApplicationResponse struct {
 	Contact              string                     `json:"contact,omitempty"`
 	UpdatedAt            *time.Time                 `json:"updated_at,omitempty"`
 	History              []EmployerFeedbackResponse `json:"history,omitempty"`
+}
+
+// RejectEmployerOpportunityRequest фиксирует отказ по текущей возможности.
+type RejectEmployerOpportunityRequest struct {
+	RoadmapID int64 `json:"roadmap_id"`
 }
 
 type EmployerFeedbackResponse struct {

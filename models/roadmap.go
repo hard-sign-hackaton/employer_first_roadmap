@@ -55,6 +55,7 @@ type Roadmap struct {
 	AdmissionApplications []RoadmapAdmissionApplication `json:"admission_applications" gorm:"foreignKey:RoadmapID"`
 	EnrollmentChoice      *RoadmapEnrollmentChoice      `json:"enrollment_choice" gorm:"foreignKey:RoadmapID"`
 	EmployerApplication   *RoadmapEmployerApplication   `json:"employer_application" gorm:"foreignKey:RoadmapID"`
+	EmployerAttempts      []EmployerOpportunityAttempt  `json:"employer_attempts" gorm:"foreignKey:RoadmapID"`
 }
 
 // RoadmapStep — персональный снимок шага. Незавершённые шаги могут уточняться позднее.
@@ -106,16 +107,30 @@ type RoadmapEmployerApplication struct {
 	SubmittedAt          time.Time `json:"submitted_at"`
 
 	CompanyOpportunity CompanyOpportunity `json:"company_opportunity" gorm:"foreignKey:CompanyOpportunityID"`
-	Feedbacks          []EmployerFeedback `json:"feedbacks" gorm:"foreignKey:RoadmapID;references:RoadmapID"`
+}
+
+// EmployerOpportunityAttempt хранит отдельную попытку попасть на практику,
+// стажировку или другой входной проект работодателя.
+type EmployerOpportunityAttempt struct {
+	ID                   int64      `json:"id" gorm:"primaryKey;autoIncrement"`
+	RoadmapID            int64      `json:"roadmap_id" gorm:"not null;uniqueIndex:ux_roadmap_opportunity_attempt"`
+	CompanyOpportunityID int64      `json:"company_opportunity_id" gorm:"not null;uniqueIndex:ux_roadmap_opportunity_attempt"`
+	Status               string     `json:"status" gorm:"size:16;not null;check:status IN ('submitted','rejected')"`
+	SubmittedAt          time.Time  `json:"submitted_at"`
+	DecidedAt            *time.Time `json:"decided_at,omitempty"`
+
+	CompanyOpportunity CompanyOpportunity `json:"company_opportunity" gorm:"foreignKey:CompanyOpportunityID"`
+	Feedbacks          []EmployerFeedback `json:"feedbacks" gorm:"foreignKey:EmployerOpportunityAttemptID"`
 }
 
 // EmployerFeedback — ответ работодателя на заявку пользователя. История не
 // перезаписывается: каждое изменение статуса сохраняется отдельной записью.
 type EmployerFeedback struct {
-	ID        int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	RoadmapID int64     `json:"roadmap_id" gorm:"not null;index"`
-	Status    string    `json:"status" gorm:"size:24;not null;check:status IN ('under_review','interview','accepted','rejected')"`
-	Message   string    `json:"message"`
-	Contact   string    `json:"contact" gorm:"size:500"`
-	CreatedAt time.Time `json:"created_at"`
+	ID                           int64     `json:"id" gorm:"primaryKey;autoIncrement"`
+	RoadmapID                    int64     `json:"roadmap_id" gorm:"not null;index"`
+	EmployerOpportunityAttemptID *int64    `json:"employer_opportunity_attempt_id,omitempty" gorm:"index"`
+	Status                       string    `json:"status" gorm:"size:24;not null;check:status IN ('under_review','interview','accepted','rejected')"`
+	Message                      string    `json:"message"`
+	Contact                      string    `json:"contact" gorm:"size:500"`
+	CreatedAt                    time.Time `json:"created_at"`
 }

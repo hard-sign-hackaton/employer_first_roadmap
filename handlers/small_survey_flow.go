@@ -19,6 +19,11 @@ func handleSmallSurveyMessage(ctx maxbot.Context) error {
 	state, s := utils.GetUserState(id), utils.GetSmallSurvey(id)
 	switch state {
 	case models.UserStateSmallSurveyWaitingCompanyName:
+		if text == "Не знаю куда хочу" {
+			// Малый опрос не оставляет частично выбранную компанию: начинаем
+			// полный опрос с того же шага, что и при ответе «Нет» в стартовом меню.
+			return CallBigSurvey(ctx)
+		}
 		n, ok := choice(text, len(s.CompanyIDs))
 		if !ok {
 			return resendSmallCompanies(ctx, "Выберите компанию:")
@@ -328,7 +333,7 @@ func showDirections(ctx maxbot.Context) error {
 		s.DirectionIDs = append(s.DirectionIDs, d.ID)
 		s.DirectionNames = append(s.DirectionNames, d.Name)
 		lines = append(lines, fmt.Sprintf("%d. %s — %s", i+1, d.Name, d.Description))
-		kb.AddRow().AddMessage(fmt.Sprintf("%d. %s", i+1, d.Name))
+		kb.AddRow().AddMessage(catalogOptionButton(i+1, d.Name))
 	}
 	utils.UpdateUserStateStorage(id, models.UserStateSmallSurveyWaitingDirection)
 	prefix := fmt.Sprintf("В компании «%s» вам подходят следующие карьерные направления.", s.CompanyName)
@@ -341,6 +346,17 @@ func choice(text string, length int) (int, bool) {
 	n, err := strconv.Atoi(strings.Split(text, ".")[0])
 	return n - 1, err == nil && n > 0 && n <= length
 }
+
+// catalogOptionButton keeps short choices understandable in the keyboard.
+// Long titles are already fully described in the preceding message and would
+// be cut off on small screens, so they are represented by their number.
+func catalogOptionButton(number int, title string) string {
+	if len(strings.Fields(title)) > 4 {
+		return fmt.Sprintf("%d", number)
+	}
+	return fmt.Sprintf("%d. %s", number, title)
+}
+
 func admissionYear(grade int16) int16 {
 	year := time.Now().Year()
 	if time.Now().Month() >= time.September {

@@ -6,10 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"efr_bot/dto"
 	"efr_bot/models"
+	"efr_bot/repositories"
+	"efr_bot/services"
+	"gorm.io/gorm"
 )
 
-func TestSeedMoscowCatalogIsIdempotentAndDoesNotCreateDemoCatalog(t *testing.T) {
+func TestSeedMainCatalogIsIdempotentAndDoesNotCreateDemoCatalog(t *testing.T) {
 	if os.Getenv("RUN_POSTGRES_INTEGRATION") != "1" {
 		t.Skip("PostgreSQL integration test is disabled")
 	}
@@ -24,15 +28,23 @@ func TestSeedMoscowCatalogIsIdempotentAndDoesNotCreateDemoCatalog(t *testing.T) 
 	}
 	// The efr_test database is disposable and test packages run serially.  Clear
 	// catalog tables so this test proves that this seed itself adds no demo data.
-	if err := db.Exec("TRUNCATE companies, universities, career_directions, education_programs, career_direction_education_programs, company_opportunities, roadmap_templates CASCADE").Error; err != nil {
+	if err := db.Exec("TRUNCATE companies, universities, career_directions, education_programs, career_direction_education_programs, company_opportunities, roadmap_templates, admission_campaign_rules CASCADE").Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := SeedMoscowCatalog(db); err != nil {
+	if err := SeedMainCatalog(db); err != nil {
 		t.Fatal(err)
 	}
-	if err := SeedMoscowCatalog(db); err != nil {
+	if err := SeedMainCatalog(db); err != nil {
 		t.Fatal(err)
 	}
+	var campaignRule models.AdmissionCampaignRule
+	if err := db.Order("admission_year DESC").First(&campaignRule).Error; err != nil {
+		t.Fatalf("main catalog must seed admission campaign limits: %v", err)
+	}
+	if campaignRule.MaxUniversities != 5 || campaignRule.MaxProgramsPerUniversity != 5 {
+		t.Fatalf("campaign limits = %+v, want 5 universities and 5 programs per university", campaignRule)
+	}
+	assertMainCatalogAdmissionPlanCanBeSaved(t, db)
 
 	var companies []models.Company
 	if err := db.Order("name").Find(&companies).Error; err != nil {
@@ -43,7 +55,7 @@ func TestSeedMoscowCatalogIsIdempotentAndDoesNotCreateDemoCatalog(t *testing.T) 
 	}
 	for _, company := range companies {
 		if company.Name == "Т1" || company.Name == "ПАО «КАМАЗ»" {
-			t.Fatalf("demo company %q leaked into Moscow catalog", company.Name)
+			t.Fatalf("demo company %q leaked into main catalog", company.Name)
 		}
 	}
 	var universities []models.University
@@ -126,5 +138,54 @@ func TestSeedMoscowCatalogIsIdempotentAndDoesNotCreateDemoCatalog(t *testing.T) 
 	}
 	if informaticsMinimum == nil || *informaticsMinimum != 65 {
 		t.Fatalf("HSE informatics minimum = %v, want 65", informaticsMinimum)
+	}
+}
+
+func assertMainCatalogAdmissionPlanCanBeSaved(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	ctx := context.Background()
+	var link models.CareerDirectionEducationProgram
+	if err := db.First(&link).Error; err != nil {
+		t.Fatalf("load main catalog direction-program link: %v", err)
+	}
+	var program models.EducationProgram
+	if err := db.Preload("University").Preload("ExamCombinations.Items").First(&program, link.EducationProgramID).Error; err != nil {
+		t.Fatalf("load main catalog programme: %v", err)
+	}
+	if len(program.ExamCombinations) == 0 || len(program.ExamCombinations[0].Items) == 0 {
+		t.Fatal("main catalog programme must have an EGE combination")
+	}
+
+	profileStore := repositories.NewGormProfileRepository(db)
+	careerStore := repositories.NewGormCareerRepository(db)
+	educationStore := repositories.NewGormEducationRepository(db)
+	roadmapStore := repositories.NewGormRoadmapRepository(db)
+	profileService := services.NewProfileService(profileStore)
+	trajectoryService := services.NewTrajectoryService(careerStore, educationStore, profileStore, roadmapStore)
+	roadmapService := services.NewRoadmapService(roadmapStore, careerStore)
+	admissionService := services.NewAdmissionService(educationStore, profileStore, roadmapStore, careerStore)
+
+	userID := time.Now().UnixNano()
+	if _, err := profileService.SaveProfile(ctx, userID, dto.UpsertProfileRequest{Grade: 11, RegionID: program.University.RegionID, WillingToRelocate: true}); err != nil {
+		t.Fatalf("save main catalog test profile: %v", err)
+	}
+	results := make([]dto.ExamResultInput, 0, len(program.ExamCombinations[0].Items))
+	for _, item := range program.ExamCombinations[0].Items {
+		results = append(results, dto.ExamResultInput{ExamSubjectID: item.ExamSubjectID, ActualScore: 100})
+	}
+	if _, err := profileService.SaveExamResults(ctx, userID, dto.SaveExamResultsRequest{Results: results}); err != nil {
+		t.Fatalf("save main catalog test EGE results: %v", err)
+	}
+	goal, err := trajectoryService.ConfirmGoal(ctx, userID, dto.ConfirmGoalRequest{CareerDirectionID: link.CareerDirectionID, TargetAdmissionYear: 2026})
+	if err != nil {
+		t.Fatalf("create main catalog test goal: %v", err)
+	}
+	roadmap, err := roadmapService.CreateRoadmap(ctx, userID, dto.CreateRoadmapRequest{GoalID: goal.ID})
+	if err != nil {
+		t.Fatalf("create main catalog test roadmap: %v", err)
+	}
+	applications, err := admissionService.SaveAdmissionPlan(ctx, userID, dto.GetAdmissionPlanRequest{RoadmapID: roadmap.ID}, dto.SaveAdmissionPlanRequest{Applications: []dto.AdmissionPlanItemInput{{EducationProgramID: program.ID}}})
+	if err != nil || len(applications) != 1 {
+		t.Fatalf("save admission plan from main catalogue: applications=%#v err=%v", applications, err)
 	}
 }

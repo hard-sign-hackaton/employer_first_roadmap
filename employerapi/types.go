@@ -143,7 +143,8 @@ type NamedReference struct {
 	Name string `json:"name"`
 }
 type EmployerApplicationListItem struct {
-	RoadmapID       int64                  `json:"application_id"`
+	ID              int64                  `json:"application_id"`
+	RoadmapID       int64                  `json:"roadmap_id"`
 	UserID          int64                  `json:"user_id"`
 	Grade           int16                  `json:"grade"`
 	UserRegion      string                 `json:"user_region"`
@@ -155,6 +156,16 @@ type EmployerApplicationListItem struct {
 	Message         string                 `json:"message,omitempty"`
 	Contact         string                 `json:"contact,omitempty"`
 	FeedbackHistory []EmployerFeedbackView `json:"feedback_history"`
+}
+
+// FeedbackNotification описывает адресата и уже сохранённый ответ работодателя.
+// Передаётся в MAX best-effort и не участвует в результате HTTP-запроса.
+type FeedbackNotification struct {
+	UserID          int64
+	CompanyName     string
+	OpportunityName string
+	Status          string
+	Message         string
 }
 type EmployerFeedbackView struct {
 	ID        int64     `json:"id"`

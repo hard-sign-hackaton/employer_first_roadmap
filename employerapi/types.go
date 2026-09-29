@@ -59,14 +59,17 @@ type DirectionTagsInput struct {
 }
 
 type OpportunityInput struct {
-	CareerDirectionID int64  `json:"career_direction_id"`
-	Type              string `json:"type"`
-	Name              string `json:"name"`
-	Description       string `json:"description"`
-	URL               string `json:"url"`
-	MinStudyYear      int16  `json:"min_study_year"`
-	RegionID          *int64 `json:"region_id,omitempty"`
-	IsActive          bool   `json:"is_active"`
+	CareerDirectionID int64      `json:"career_direction_id"`
+	Type              string     `json:"type"`
+	Name              string     `json:"name"`
+	Description       string     `json:"description"`
+	URL               string     `json:"url"`
+	ActiveListingURL  string     `json:"active_listing_url"`
+	SourceCheckedAt   *time.Time `json:"source_checked_at,omitempty"`
+	WorkFormat        string     `json:"work_format"`
+	MinStudyYear      int16      `json:"min_study_year"`
+	RegionID          *int64     `json:"region_id,omitempty"`
+	IsActive          bool       `json:"is_active"`
 }
 type OpportunityResponse struct {
 	ID int64 `json:"id"`

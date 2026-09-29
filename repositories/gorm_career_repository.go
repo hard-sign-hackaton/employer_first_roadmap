@@ -79,7 +79,9 @@ func (r *GormCareerRepository) FindActiveOpportunity(ctx context.Context, compan
 	var opportunity models.CompanyOpportunity
 	err := r.db.WithContext(ctx).
 		Where("company_id = ? AND career_direction_id = ? AND is_active = ?", companyID, careerDirectionID, true).
-		Where("region_id IS NULL OR region_id = ?", regionID).
+		// A region-less opportunity is not automatically nationwide: only a
+		// source-confirmed remote format may be offered outside the university's region.
+		Where("region_id = ? OR (region_id IS NULL AND work_format = 'remote')", regionID).
 		Order(gorm.Expr("CASE WHEN region_id = ? THEN 0 ELSE 1 END", regionID)).
 		Order("min_study_year ASC").
 		First(&opportunity).Error

@@ -68,7 +68,7 @@ func (r *GormEducationRepository) ListEducationOptions(ctx context.Context, filt
 			WHERE co.company_id = ?
 				AND co.career_direction_id = ?
 				AND co.is_active = true
-				AND (co.region_id IS NULL OR co.region_id = universities.region_id)
+				AND (co.region_id = universities.region_id OR (co.region_id IS NULL AND co.work_format = 'remote'))
 		)`, filter.CompanyID, filter.CareerDirectionID)
 	}
 

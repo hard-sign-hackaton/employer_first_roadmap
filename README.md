@@ -61,7 +61,7 @@ MAX-пользователь <── бот и сервисы <── GORM / Pos
 | --- | --- | --- |
 | `BOT_TOKEN` | пусто | Обязательный токен MAX-бота. |
 | `ADMIN_API_TOKEN` | пусто | Токен bootstrap-администратора; при старте создаёт или обновляет аккаунт `bootstrap-admin`. |
-| `APP_ENV` | `development` | Режим приложения; `demo` включает demo-seed. |
+| `APP_ENV` | `main` | Режим приложения |
 | `SEED_DEMO_DATA` | `false` | Явно включает демонстрационный каталог. |
 | `SEED_MAIN_CATALOG` | `false` | Включает основной каталог для демонстрации. |
 | `EMPLOYER_API_PORT` | `8080` | Порт HTTP API в контейнере и на хосте. |
@@ -69,9 +69,10 @@ MAX-пользователь <── бот и сервисы <── GORM / Pos
 | `REMINDERS_ENABLED` | `true` | Включает еженедельные напоминания. |
 | `REMINDER_CRON` | `0 10 * * 1` | Cron из пяти полей; по умолчанию понедельник, 10:00. |
 | `REMINDER_TIMEZONE` | `Europe/Moscow` | IANA-таймзона напоминаний. |
-| `POSTGRES_DB` | `employer_first_roadmap` | Имя БД базового Compose-контура. |
-| `POSTGRES_USER` | `efr` | Пользователь PostgreSQL базового контура. |
-| `POSTGRES_PASSWORD` | `efr_local_password` | Пароль PostgreSQL базового контура; измените вне локальной разработки. |
+| `POSTGRES_DB` | пусто | Имя БД базового Compose-контура. |
+| `POSTGRES_USER` | пусто | Пользователь PostgreSQL базового контура. |
+| `POSTGRES_PASSWORD` | пусто | Пароль PostgreSQL базового контура. |
+| `POSTGRES_PORT` | пусто | Порт PostgreSQL базового контура. |
 | `DB_HOST`, `DB_PORT`, `DB_NAME` | `localhost`, `5432`, `employer_first_roadmap` | Параметры прямого подключения при запуске без Compose. |
 | `DB_USER`, `DB_PASSWORD`, `DB_SSLMODE` | `efr`, `efr_local_password`, `disable` | Учётные данные и SSL-режим прямого подключения. |
 
@@ -81,6 +82,13 @@ MAX-пользователь <── бот и сервисы <── GORM / Pos
 BOT_TOKEN="ваш_токен_MAX"
 ADMIN_API_TOKEN="длинный_случайный_секрет"
 EMPLOYER_API_PORT=8080
+POSTGRES_DB="имя_базы_данных"
+POSTGRES_USER="пользователь_БД"
+POSTGRES_PASSWORD="пароль_БД"
+POSTGRES_PORT=
+POSTGRES_DB_TEST=${POSTGRES_DB}_test
+POSTGRES_USER_TEST=${POSTGRES_USER}_test
+POSTGRES_PASSWORD_TEST=${POSTGRES_PASSWORD}_test
 ```
 
 ## Порты

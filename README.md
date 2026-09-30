@@ -61,9 +61,6 @@ MAX-пользователь <── бот и сервисы <── GORM / Pos
 | --- | --- | --- |
 | `BOT_TOKEN` | пусто | Обязательный токен MAX-бота. |
 | `ADMIN_API_TOKEN` | пусто | Токен bootstrap-администратора; при старте создаёт или обновляет аккаунт `bootstrap-admin`. |
-| `APP_ENV` | `main` | Режим приложения |
-| `SEED_DEMO_DATA` | `false` | Явно включает демонстрационный каталог. |
-| `SEED_MAIN_CATALOG` | `false` | Включает основной каталог для демонстрации. |
 | `EMPLOYER_API_PORT` | `8080` | Порт HTTP API в контейнере и на хосте. |
 | `EMPLOYER_ALLOWED_ORIGIN` | пусто | Единственный разрешённый CORS origin, например `http://localhost:3000`. |
 | `REMINDERS_ENABLED` | `true` | Включает еженедельные напоминания. |
@@ -73,8 +70,13 @@ MAX-пользователь <── бот и сервисы <── GORM / Pos
 | `POSTGRES_USER` | пусто | Пользователь PostgreSQL базового контура. |
 | `POSTGRES_PASSWORD` | пусто | Пароль PostgreSQL базового контура. |
 | `POSTGRES_PORT` | пусто | Порт PostgreSQL базового контура. |
+| `POSTGRES_DB_TEST`, `POSTGRES_USER_TEST`, `POSTGRES_PASSWORD_TEST` | зависят от основных значений | Отдельные имя БД и учётные данные для автоматических тестов. |
 | `DB_HOST`, `DB_PORT`, `DB_NAME` | `localhost`, `5432`, `employer_first_roadmap` | Параметры прямого подключения при запуске без Compose. |
 | `DB_USER`, `DB_PASSWORD`, `DB_SSLMODE` | `efr`, `efr_local_password`, `disable` | Учётные данные и SSL-режим прямого подключения. |
+
+`docker-compose.yml` фиксирует рабочий режим `main` и загрузку основного
+каталога. Варианты значений для `.env`, включая параметры тестовой БД, приведены
+в презентации проекта: перед запуском скопируйте нужный набор значений в `.env`.
 
 Минимальный `.env`:
 
@@ -95,65 +97,47 @@ POSTGRES_PASSWORD_TEST=${POSTGRES_PASSWORD}_test
 
 | Порт | Контур | Назначение |
 | --- | --- | --- |
-| `8080/tcp` | main, empty, demo | REST API и `GET /healthz`; меняется через `EMPLOYER_API_PORT`. |
+| `EMPLOYER_API_PORT/tcp` | хост | REST API и `GET /healthz`; в примерах `8080`. |
 | `5432/tcp` | внутренняя Docker-сеть | PostgreSQL приложения. |
-| `5433/tcp` | только test, хост | Изолированная тестовая PostgreSQL. |
 
-Бот общается с MAX по исходящему HTTPS-соединению, поэтому отдельный входящий порт для MAX не нужен. Не запускайте одновременно два из main/empty/demo с одинаковым `EMPLOYER_API_PORT`; test-контур можно запускать параллельно.
+Бот общается с MAX по исходящему HTTPS-соединению, поэтому отдельный входящий
+порт для MAX не нужен. PostgreSQL не публикуется на хост: и приложение, и
+контейнер `tests` обращаются к ней по внутренней Docker-сети.
 
-## Запуск локальных контуров
+## Запуск локальных компонентов
 
-Во всех командах ниже сначала создайте `.env` из `.env.example`. Основной демонстрационный контур - **main**: он поднимает все локальные компоненты и загружает актуальный демонстрационный каталог.
-
-### Основной каталог - `efr_main`
-
-```bash
-docker compose -p efr_main -f docker-compose.yml -f docker-compose.main.yml up --build -d
-```
-
-Контур использует БД `employer_first_roadmap_main`, volume `postgres_main_data` и seed основного каталога.
-
-### Пустой каталог для ручного заполнения API - `efr_empty`
+Создайте `.env` из `.env.example` и вставьте в него подходящий набор значений
+из презентации проекта. Одна команда поднимает PostgreSQL, MAX-бот и HTTP API:
 
 ```bash
-docker compose -p efr_empty -f docker-compose.yml up --build -d
+docker compose up --build -d
 ```
 
-Здесь создаются только схема и обязательные справочники. Компании, вузы, ОП, правила поступления и возможности заполняются через admin/employer API.
-
-### Demo-каталог - `efr_demo`
-
-```bash
-docker compose -p efr_demo -f docker-compose.yml -f docker-compose.demo.yml up --build -d
-```
-
-Это отдельная БД `employer_first_roadmap_demo` и volume `postgres_demo_data`. Данные связны, но предназначены для разработки; реальные названия организаций не означают наличие реальных вакансий или условий поступления.
-
-### Тестовая PostgreSQL - `efr_test`
+Повторный запуск с другими значениями `.env` использует другую БД только при
+новом Docker volume. Для отдельного тестового запуска применяйте test-overlay:
 
 ```bash
 docker compose -p efr_test -f docker-compose.yml -f docker-compose.test.yml up -d --wait postgres
 ```
 
-### Запуск тестов в поднятом test-контуре
-
 ```bash
 docker compose -p efr_test -f docker-compose.yml -f docker-compose.test.yml run --rm --no-deps tests
 ```
 
-Проверка любого запущенного bot-контура:
+Проверка запуска:
 
 ```bash
 curl http://localhost:8080/healthz
-docker compose -p efr_main -f docker-compose.yml -f docker-compose.main.yml logs -f efr_bot
+docker compose logs -f efr_bot
 ```
 
+Если в `.env` указан другой `EMPLOYER_API_PORT`, замените `8080` в команде.
 Ожидаемый ответ healthcheck: `{"status":"ok"}`.
 
 ## Работа с данными
 
 - При старте выполняются `AutoMigrate` и идемпотентный seed обязательных справочников: регионов, интересов и предметов ЕГЭ.
-- Seed main и demo добавляет свои каталоговые данные; повторный запуск обновляет эти данные идемпотентно. Каждый Compose-контур имеет собственные имя БД и Docker volume.
+- Базовый Compose загружает основной каталог; повторный запуск обновляет эти данные идемпотентно. Выбранные параметры БД из `.env` определяют используемый Docker volume.
 - PostgreSQL хранит общий каталог, профили, выбранные экзамены, цели, roadmap, планы подачи, попытки возможностей работодателей и feedback.
 - API-токены сохраняются в БД только как SHA-256-хэши. Исходные `BOT_TOKEN`, `ADMIN_API_TOKEN` и пароль БД остаются переменными окружения.
 - Состояние текущего экрана диалога живёт в памяти одного процесса. После рестарта сохранённые roadmap остаются в БД; пользователь возвращается к маршруту командой `/roadmap`.
@@ -175,26 +159,25 @@ docker compose -p efr_main -f docker-compose.yml -f docker-compose.main.yml logs
 
 ### Порядок работы с тестовыми данными
 
-1. Для проверки полного пользовательского сценария используйте `efr_main`:
-   это основной каталог с актуальными для MVP связями, официальными ссылками и
-   демонстрационными компаниями. Он не предназначен для изоляции экспериментов.
-2. Для разработки сценариев используйте `efr_demo`: его seed заполняет
-   отдельную БД связными тестовыми значениями. Чтобы начать demo заново,
-   остановите **только** его командой `docker compose -p efr_demo -f
-   docker-compose.yml -f docker-compose.demo.yml down -v`, затем снова
-   выполните команду запуска demo-контура.
-3. Для API-проверки создайте сущности из `docs/api-test-data.json` через
+1. Для проверки полного пользовательского сценария запустите базовый Compose с
+   основными значениями `.env` из презентации. Он загрузит актуальный для MVP
+   каталог с официальными ссылками и демонстрационными компаниями.
+2. Для API-проверки создайте сущности из `docs/api-test-data.json` через
    запросы и роли, описанные в `DATA-API.yaml`. Добавляйте уникальный
    `<run-id>`, сохраняйте ID из ответов и в конце архивируйте записи запросами
    cleanup из фикстуры. Это не затронет основной каталог.
-4. Для автотестов используйте только `efr_test`. Перед чистым прогоном удалите
-   лишь его volume: `docker compose -p efr_test -f docker-compose.yml -f
-   docker-compose.test.yml down -v`; затем поднимите PostgreSQL и запустите
-   контейнер `tests` командами из раздела запуска.
+3. Для автотестов внесите тестовые `POSTGRES_*_TEST` из презентации в `.env`.
+   Перед чистым прогоном удалите только test-volume командой `docker compose
+   -p efr_test -f docker-compose.yml -f docker-compose.test.yml down -v`, затем поднимите
+   PostgreSQL и запустите контейнер `tests` командами из раздела запуска.
 
 ## Пошаговая ручная проверка на основном каталоге
 
-Перед проверкой поднимите `efr_main`, убедитесь в ответе `/healthz` и откройте бот в MAX. Ниже приведены **конкретные примеры** из основного seed-каталога; можно выбирать и другие доступные компании, направления, ОП и вузы. Формулировки и порядок карточек могут меняться при актуализации каталога.
+Перед проверкой поднимите базовый Compose с основными значениями `.env`,
+убедитесь в ответе `/healthz` и откройте бот в MAX. Ниже приведены **конкретные
+примеры** из основного seed-каталога; можно выбирать и другие доступные
+компании, направления, ОП и вузы. Формулировки и порядок карточек могут
+меняться при актуализации каталога.
 
 ### 1. 9 класс, компания известна
 
@@ -241,13 +224,11 @@ docker compose -p efr_main -f docker-compose.yml -f docker-compose.main.yml logs
 
 ## Остановка, повторный запуск и очистка
 
-Используйте при остановке те же `-p` и `-f`, что и при запуске: так не будут затронуты данные другого контура.
+Используйте тот же набор Compose-файлов, что и при запуске.
 
-| Контур | Остановить, сохранив данные | Повторный запуск | Логи | Полный необратимый сброс |
+| Режим | Остановить, сохранив данные | Повторный запуск | Логи | Полный необратимый сброс |
 | --- | --- | --- | --- | --- |
-| main | `docker compose -p efr_main -f docker-compose.yml -f docker-compose.main.yml down` | `docker compose -p efr_main -f docker-compose.yml -f docker-compose.main.yml up --build -d` | `docker compose -p efr_main -f docker-compose.yml -f docker-compose.main.yml logs -f efr_bot` | `docker compose -p efr_main -f docker-compose.yml -f docker-compose.main.yml down -v` |
-| empty | `docker compose -p efr_empty -f docker-compose.yml down` | `docker compose -p efr_empty -f docker-compose.yml up --build -d` | `docker compose -p efr_empty -f docker-compose.yml logs -f efr_bot` | `docker compose -p efr_empty -f docker-compose.yml down -v` |
-| demo | `docker compose -p efr_demo -f docker-compose.yml -f docker-compose.demo.yml down` | `docker compose -p efr_demo -f docker-compose.yml -f docker-compose.demo.yml up --build -d` | `docker compose -p efr_demo -f docker-compose.yml -f docker-compose.demo.yml logs -f efr_bot` | `docker compose -p efr_demo -f docker-compose.yml -f docker-compose.demo.yml down -v` |
-| test | `docker compose -p efr_test -f docker-compose.yml -f docker-compose.test.yml down` | `docker compose -p efr_test -f docker-compose.yml -f docker-compose.test.yml up -d --wait postgres` | `docker compose -p efr_test -f docker-compose.yml -f docker-compose.test.yml logs -f postgres` | `docker compose -p efr_test -f docker-compose.yml -f docker-compose.test.yml down -v` |
+| Рабочий запуск | `docker compose down` | `docker compose up --build -d` | `docker compose logs -f efr_bot` | `docker compose down -v` |
+| Автотесты | `docker compose -p efr_test -f docker-compose.yml -f docker-compose.test.yml down` | `docker compose -p efr_test -f docker-compose.yml -f docker-compose.test.yml up -d --wait postgres` | `docker compose -p efr_test -f docker-compose.yml -f docker-compose.test.yml logs -f postgres` | `docker compose -p efr_test -f docker-compose.yml -f docker-compose.test.yml down -v` |
 
 `down -v` удаляет Docker volume соответствующего контура и все его локальные данные без возможности восстановления.
